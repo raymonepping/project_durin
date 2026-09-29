@@ -9,6 +9,11 @@ Thumbs.db
 *.bak
 *.swp
 *.pid
+article/
+input/
+prompts/
+images/
+lics/
 git_commit.sh
 FOLDER_TREE.md
 
@@ -92,7 +97,6 @@ db.sqlite3
 instance/
 .webassets-cache
 .scrapy
-docs/_build/
 site/
 celerybeat-schedule
 profile_default/
@@ -105,16 +109,22 @@ node_modules/
 npm-debug.log*
 
 ########################################
-# 🐳 Docker
+# 📦 Containers (Podman is the canonical runtime)
 ########################################
 *.tar
-docker-compose.override.yml
+compose.override.yml
+backups/
+data/
+*.hclic
+vault-tls/
+.secrets/
 
 ########################################
 # 🌍 Environment and Config Files
 ########################################
 .env
 .env.*
+!.env.example
 
 ########################################
 # 🛠️ Terraform
@@ -127,6 +137,26 @@ docker-compose.override.yml
 .terraform.lock.hcl
 *.log
 crash.log
+
+########################################
+# 🛠️ Prompt 28 — Terraform provider skeleton build output
+########################################
+terraform/arcanium-provider/terraform-provider-arcanium
+
+########################################
+# 🎨 Prompt 00 — Impeccable's platform-specific compiled binary.
+# SKILL.md / reference/*.md / the bundled JS are portable and committed
+# so the skill works for any collaborator without re-running the
+# installer; the native darwin-arm64 (or any other platform's) binary
+# would not even run on a different OS/arch and is re-fetched by
+# `npx impeccable install` on any machine that needs it, same reasoning
+# as the Terraform provider binary above.
+########################################
+**/skills/impeccable/scripts/bin/
+
+# Claude Code's own convention: settings.local.json is per-developer/
+# per-machine, never the shared/committed settings.json.
+.claude/settings.local.json
 justfile
 # tfvars often carry real credentials — commit .tfvars.example instead
 *.tfvars
@@ -213,3 +243,29 @@ kubeconfig
 .kubeconfig
 kube/config
 
+
+# ── Added by commit_gh --harden ─────────────────────────────
+*.env
+.vault.*
+*.vault
+*.jsonl
+input/*
+!input/.gitkeep
+output/*
+!output/.gitkeep
+compose/observability/prometheus/vault-token
+
+# state/ capture staging — an in-progress or failed capture-state.sh run
+# (Prompt 00 atomic capture: built in .tmp, only renamed into
+# state/baselines/ once validated). Never a finalized baseline; must never
+# be swept into a commit by accident.
+state/.capture-*.tmp/
+
+########################################
+# 🎨 Prompt 00 — frontend design toolchain / quality gate
+########################################
+# Playwright CLI's own session/snapshot/console-log working files and
+# generated visual-development artifacts (before/after screenshots) — never
+# durable configuration or reports, regenerated on every run.
+
+compose/identity/ldap/bootstrap.ldif

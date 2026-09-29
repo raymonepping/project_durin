@@ -1,0 +1,38 @@
+# Prometheus scrape config — Prompt 13
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Vault Enterprise nodes — /v1/sys/metrics needs a token (Bearer accepted).
+  - job_name: vault
+    metrics_path: /v1/sys/metrics
+    params:
+      format: ["prometheus"]
+    scheme: https
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/vault-token
+    tls_config:
+      ca_file: /etc/prometheus/vault-ca.pem
+      insecure_skip_verify: true
+    static_configs:
+      - targets: ["vault-1:8200"]
+        labels: { node: vault-1 }
+      - targets: ["vault-2:8200"]
+        labels: { node: vault-2 }
+      - targets: ["vault-3:8200"]
+        labels: { node: vault-3 }
+
+  - job_name: arcanium-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["arcanium-api:3001"]
+
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["arcanium-otel-collector:8889"]

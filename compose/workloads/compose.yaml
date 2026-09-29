@@ -1,0 +1,189 @@
+services:
+  payments-api:
+    image: arcanium-payments-api:local
+    build:
+      context: ../../workloads/payments-api
+      dockerfile: Containerfile
+    container_name: arcanium-payments-api
+    hostname: payments-api
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    ports:
+      - "127.0.0.1:3002:3002"
+    environment:
+      VAULT_ADDR: "https://vault-1:8200"
+      VAULT_CACERT: "/vault/tls/ca-chain.pem"
+      VAULT_ROLE_ID: "${PAYMENTS_VAULT_ROLE_ID}"
+      VAULT_SECRET_ID: "${PAYMENTS_VAULT_SECRET_ID}"
+      VAULT_TRANSIT_KEY: "payments-api-key"
+      DEMO_FAST_ROTATION: "${DEMO_FAST_ROTATION:-false}"
+      PORT: "3002"
+    volumes:
+      - ../../vault-tls:/vault/tls:ro
+    networks: [arcanium-vault-internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3002/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  pki-client:
+    image: arcanium-pki-client:local
+    build:
+      context: ../../workloads/pki-client
+      dockerfile: Containerfile
+    container_name: arcanium-pki-client
+    hostname: pki-client
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    ports:
+      - "127.0.0.1:3003:3003"
+    environment:
+      VAULT_ADDR: "https://vault-1:8200"
+      VAULT_CACERT: "/vault/tls/ca-chain.pem"
+      VAULT_ROLE_ID: "${PKI_VAULT_ROLE_ID}"
+      VAULT_SECRET_ID: "${PKI_VAULT_SECRET_ID}"
+      PKI_MOUNT: "pki-int"
+      PKI_ROLE: "arcanium-services"
+      CERT_CN: "pki-client.arcanium.local"
+      DEMO_SHORT_TTL: "${DEMO_SHORT_TTL:-false}"
+      PORT: "3003"
+    volumes:
+      - ../../vault-tls:/vault/tls:ro
+    networks: [arcanium-vault-internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3003/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  kmip-client:
+    image: arcanium-kmip-client:local
+    build:
+      context: ../../workloads/kmip-client
+      dockerfile: Containerfile
+    container_name: arcanium-kmip-client
+    hostname: kmip-client
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    ports:
+      - "127.0.0.1:3007:3007"
+    environment:
+      KMIP_HOST: "vault-1"
+      KMIP_PORT: "5696"
+      KMIP_CERT: "/kmip/client.pem"
+      KMIP_KEY:  "/kmip/client.key"
+      # The Vault KMIP engine manages its own TLS with a KMIP-internal PKI CA.
+      # Use the CA from provision.sh (.secrets/kmip/ca.pem) — the KMIP engine CA chain.
+      KMIP_CA:   "/kmip/ca.pem"
+      DEMO_FAST_ROTATION: "${DEMO_FAST_ROTATION:-false}"
+      PORT: "3007"
+    volumes:
+      - ../../.secrets/kmip:/kmip:ro
+    networks: [arcanium-vault-internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:3007/health')\" 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+  document-signing:
+    image: arcanium-document-signing:local
+    build:
+      context: ../../workloads/document-signing
+      dockerfile: Containerfile
+    container_name: arcanium-document-signing
+    hostname: document-signing
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    ports:
+      - "127.0.0.1:3004:3004"
+    environment:
+      # Prompt 14.1 — signs against vault-hsm, where document-signing-key is a
+      # Managed Key: the RSA-4096 private key is generated in and never leaves
+      # SoftHSM (PKCS#11). Vault Transit delegates sign/verify to the token.
+      VAULT_ADDR: "https://vault-hsm:8200"
+      VAULT_CACERT: "/vault/tls/ca-chain.pem"
+      VAULT_ROLE_ID: "${DOCSIGN_VAULT_ROLE_ID}"
+      VAULT_SECRET_ID: "${DOCSIGN_VAULT_SECRET_ID}"
+      VAULT_TRANSIT_SIGN_KEY: "document-signing-key"
+      SIGN_INTERVAL_SECONDS: "30"
+      PORT: "3004"
+    volumes:
+      - ../../vault-tls:/vault/tls:ro
+    networks: [arcanium-vault-internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3004/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  external-supplier:
+    image: arcanium-external-supplier:local
+    build:
+      context: ../../workloads/external-supplier
+      dockerfile: Containerfile
+    container_name: arcanium-external-supplier
+    hostname: external-supplier
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    ports:
+      - "127.0.0.1:3005:3005"
+    environment:
+      VAULT_ADDR: "https://vault-1:8200"
+      VAULT_CACERT: "/vault/tls/ca-chain.pem"
+      VAULT_ROLE_ID: "${SUPPLIER_VAULT_ROLE_ID}"
+      VAULT_SECRET_ID: "${SUPPLIER_VAULT_SECRET_ID}"
+      ARCANIUM_API: "http://arcanium-api:3001"
+      ARCANIUM_APP_ID: "${SUPPLIER_ARCANIUM_APP_ID}"
+      # Prompt 49 — POST /api/v1/approvals requires an authenticated
+      # caller once ARCANIUM_AUTH_ENABLED=true (this deployment always
+      # runs that way); a Prompt 28 service-account token, minted by
+      # scenarios/05_approval/provision.sh, same as every other
+      # credential this workload uses.
+      ARCANIUM_TOKEN: "${SUPPLIER_ARCANIUM_TOKEN}"
+      TRANSIT_KEY: "external-supplier-key"
+      CYCLE_INTERVAL_MS: "120000"
+    volumes:
+      - ../../vault-tls:/vault/tls:ro
+    networks:
+      - arcanium-vault-internal
+      - arcanium-control
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3005/health 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+networks:
+  arcanium-vault-internal:
+    name: arcanium-vault-internal
+    external: true
+  arcanium-control:
+    name: arcanium-control
+    external: true

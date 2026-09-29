@@ -1,0 +1,65 @@
+# Observability stack — Prompt 13
+# Independent stack. Joins arcanium-control (external) to reach Vault + the API.
+# Grafana is on host port 3010 (the Arcanium UI owns 3000).
+
+services:
+  prometheus:
+    image: docker.io/prom/prometheus:latest
+    container_name: arcanium-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=6h
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/vault-token:/etc/prometheus/vault-token:ro
+      - ../../vault-tls/ca-chain.pem:/etc/prometheus/vault-ca.pem:ro
+      - prometheus-data:/prometheus
+    # Prometheus also joins the Vault-internal network — read-only metric scraping
+    # is a monitoring concern. Grafana/OTel stay on arcanium-control only.
+    networks: [arcanium-control, arcanium-vault-internal]
+    restart: unless-stopped
+
+  grafana:
+    image: docker.io/grafana/grafana:latest
+    container_name: arcanium-grafana
+    ports:
+      - "127.0.0.1:3010:3000"
+    environment:
+      GF_SERVER_HTTP_PORT: "3000"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks: [arcanium-control]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+  otel-collector:
+    image: docker.io/otel/opentelemetry-collector-contrib:latest
+    container_name: arcanium-otel-collector
+    command: ["--config=/etc/otel/config.yaml"]
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    networks: [arcanium-control]
+    restart: unless-stopped
+
+networks:
+  arcanium-control:
+    name: arcanium-control
+    external: true
+  arcanium-vault-internal:
+    name: arcanium-vault-internal
+    external: true
+
+volumes:
+  prometheus-data: {}
+  grafana-data: {}

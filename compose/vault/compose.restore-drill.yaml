@@ -1,0 +1,46 @@
+# compose/vault/compose.restore-drill.yaml — Prompt 24, Deliverable 3.
+#
+# A separate compose PROJECT (scripts/vault-restore-drill.sh always passes
+# --project-name arcanium-vault-restore-drill), not a service inside the
+# main compose/vault/compose.yaml project — its own container, its own
+# fresh volume (never the main cluster's), spun up and torn down per run.
+# Joins the same arcanium-vault-internal network only because it needs to
+# reach vault-s for the transit unseal (see vault-restore-drill/config.hcl
+# for why that dependency is real and not a leak of "isolation").
+services:
+  vault-restore-drill:
+    image: docker.io/hashicorp/vault-enterprise:2.1.0-ent
+    container_name: arcanium-vault-restore-drill
+    hostname: vault-restore-drill
+    user: "100:1000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      VAULT_ADDR: https://127.0.0.1:8200
+      VAULT_CACERT: /vault/config/tls/ca-chain.pem
+      VAULT_LICENSE: "${VAULT_LICENSE}"
+    entrypoint: ["/bin/sh", "/arcanium/vault-server.sh"]
+    ports:
+      - "127.0.0.1:18400:8200"
+    volumes:
+      - vault-restore-drill-data:/vault/file
+      - ../../vault-restore-drill/config.hcl:/vault/config/config.hcl:ro
+      - ../../vault-s/config/vault_v2.hclic:/vault/config/vault_v2.hclic:ro
+      - ../../vault-tls:/vault/config/tls:ro
+      - ../../scripts/vault-server.sh:/arcanium/vault-server.sh:ro
+      - ../../.secrets/vault/transit-token:/run/secrets/transit-token:ro
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://127.0.0.1:8200/v1/sys/health?standbyok=true&sealedok=true&uninitok=true >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+networks:
+  default:
+    name: arcanium-vault-internal
+    external: true
+
+volumes:
+  vault-restore-drill-data: {}

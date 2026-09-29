@@ -1,0 +1,29 @@
+# Nuxt frontend — the factory dashboard.
+# prompts/frontend/01_01_factory_dashboard_ui.md.
+
+networks:
+  default:
+    name: factory-control
+    external: true
+
+services:
+  ui:
+    build:
+      context: ../../ui
+      dockerfile: Containerfile
+    image: factory-ui:local
+    container_name: factory-ui
+    hostname: ui
+    environment:
+      FACTORY_API_INTERNAL_URL: "http://api:3001"
+      NUXT_FACTORY_API_INTERNAL: "http://api:3001"
+      NUXT_PUBLIC_API_BASE: "http://localhost:${API_PORT:-3001}"
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s

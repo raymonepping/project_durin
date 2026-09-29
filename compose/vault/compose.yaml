@@ -1,0 +1,187 @@
+# Adapted from vault_reference/docker-compose.yml; only the primary cluster.
+x-vault: &vault
+  image: docker.io/hashicorp/vault-enterprise:2.1.0-ent
+  user: "100:1000"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  environment:
+    VAULT_ADDR: https://127.0.0.1:8200
+    VAULT_CACERT: /vault/config/tls/ca-chain.pem
+    VAULT_LICENSE: "${VAULT_LICENSE}"
+  entrypoint: ["/bin/sh", "/arcanium/vault-server.sh"]
+  restart: unless-stopped
+  mem_limit: 2g
+  networks: [default]
+  healthcheck:
+    test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://127.0.0.1:8200/v1/sys/health?standbyok=true&sealedok=true&uninitok=false >/dev/null"]
+    interval: 10s
+    timeout: 5s
+    retries: 15
+    start_period: 20s
+
+services:
+  vault-s:
+    <<: *vault
+    container_name: arcanium-vault_s
+    hostname: vault-s
+    ports: ["127.0.0.1:18190:8200"]
+    volumes:
+      - vault-s-data:/vault/file
+      - vault-s-audit:/vault/audit
+      - ../../vault-s/config-s.hcl:/vault/config/config.hcl:ro
+      - ../../vault-s/config/vault_v2.hclic:/vault/config/vault_v2.hclic:ro
+      - ../../vault-tls:/vault/config/tls:ro
+      - ../../scripts/vault-server.sh:/arcanium/vault-server.sh:ro
+
+  vault-1:
+    <<: *vault
+    container_name: arcanium-vault_1
+    hostname: vault-1
+    ports:
+      - "127.0.0.1:18200:8200"
+      - "127.0.0.1:15696:5696"
+    volumes:
+      - vault-1-data:/vault/file
+      - vault-1-audit:/vault/audit
+      - ../../vault-1/config.hcl:/vault/config/config.hcl:ro
+      - ../../vault-s/config/vault_v2.hclic:/vault/config/vault_v2.hclic:ro
+      - ../../vault-tls:/vault/config/tls:ro
+      - ../../scripts/vault-server.sh:/arcanium/vault-server.sh:ro
+      - ../../.secrets/vault/transit-token:/run/secrets/transit-token:ro
+    depends_on:
+      vault-s:
+        condition: service_healthy
+
+  vault-2:
+    <<: *vault
+    container_name: arcanium-vault_2
+    hostname: vault-2
+    ports: ["127.0.0.1:18201:8200"]
+    volumes:
+      - vault-2-data:/vault/file
+      - vault-2-audit:/vault/audit
+      - ../../vault-2/config-2.hcl:/vault/config/config.hcl:ro
+      - ../../vault-s/config/vault_v2.hclic:/vault/config/vault_v2.hclic:ro
+      - ../../vault-tls:/vault/config/tls:ro
+      - ../../scripts/vault-server.sh:/arcanium/vault-server.sh:ro
+      - ../../.secrets/vault/transit-token:/run/secrets/transit-token:ro
+    depends_on:
+      vault-s:
+        condition: service_healthy
+
+  vault-3:
+    <<: *vault
+    container_name: arcanium-vault_3
+    hostname: vault-3
+    ports: ["127.0.0.1:18202:8200"]
+    volumes:
+      - vault-3-data:/vault/file
+      - vault-3-audit:/vault/audit
+      - ../../vault-3/config-3.hcl:/vault/config/config.hcl:ro
+      - ../../vault-s/config/vault_v2.hclic:/vault/config/vault_v2.hclic:ro
+      - ../../vault-tls:/vault/config/tls:ro
+      - ../../scripts/vault-server.sh:/arcanium/vault-server.sh:ro
+      - ../../.secrets/vault/transit-token:/run/secrets/transit-token:ro
+    depends_on:
+      vault-s:
+        condition: service_healthy
+
+  # Secret-ID Rotator sidecar — proactively rotates arcanium-api's AppRole
+  # secret-id before the 90-day TTL expires, writing atomically to the shared
+  # vault-approle-credentials volume. vault-agent reads from that volume,
+  # so the two containers are decoupled: the agent never needs to restart
+  # when a rotation happens — it picks up the new file on next re-auth.
+  # Bootstrapped once: ROTATOR_ROLE_ID/ROTATOR_SECRET_ID seeded via .env
+  # (scripts/rehydrate-stack.sh issues these after tf-platform).
+  vault-rotator:
+    image: docker.io/hashicorp/vault-enterprise:2.1.0-ent
+    container_name: arcanium-vault_rotator
+    hostname: vault-rotator
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp, /home/vault]
+    entrypoint: ["/vault/rotator/rotator.sh"]
+    environment:
+      VAULT_ADDR: "https://vault-1:8200"
+      VAULT_CACERT: "/vault/tls/ca-chain.pem"
+      ROTATOR_ROLE_ID: "${ROTATOR_ROLE_ID}"
+      ROTATOR_SECRET_ID: "${ROTATOR_SECRET_ID}"
+      TARGET_ROLE_ID: "${ARCANIUM_VAULT_ROLE_ID}"
+      TARGET_ROLE_NAME: "arcanium-api"
+      CHECK_INTERVAL_SECONDS: "43200"
+      ROTATION_THRESHOLD_SECONDS: "5184000" # 60 days
+    volumes:
+      - ../../vault-tls:/vault/tls:ro
+      - ./vault-rotator/rotator.sh:/vault/rotator/rotator.sh:ro
+      - ./vault-rotator/healthcheck.sh:/vault/rotator/healthcheck.sh:ro
+      - vault-approle-credentials:/run/approle
+    networks: [default]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "/vault/rotator/healthcheck.sh"]
+      interval: 10s
+      timeout: 3s
+      start_period: 15s
+      retries: 5
+
+  # Vault Agent — AppRole auto-auth + dynamic DB-credential rendering for
+  # arcanium-api. Reads role-id/secret-id from vault-approle-credentials
+  # (managed and rotated by vault-rotator above). Renders the session token
+  # and db-creds.json to vault-agent-secrets, consumed by arcanium-api/worker.
+  arcanium-vault-agent:
+    image: docker.io/hashicorp/vault-enterprise:2.1.0-ent
+    container_name: arcanium-vault_agent
+    hostname: arcanium-vault-agent
+    # NOT "100:1000" (the vault-1/2/3/vault-s convention): the rendered token
+    # file must be readable cross-container by arcanium-api/worker (1000:1000).
+    # The sink's `mode` config did not reliably grant group-read — matching UID
+    # directly means the default 0600 already covers it.
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp, /home/vault]
+    entrypoint: ["/vault/agent/entrypoint.sh"]
+    environment:
+      VAULT_ADDR: "https://vault-1:8200"
+      VAULT_CACERT: "/vault/tls/ca-chain.pem"
+    volumes:
+      - ../../vault-tls:/vault/tls:ro
+      - ./vault-agent/config.hcl:/vault/agent/config.hcl:ro
+      - ./vault-agent/entrypoint.sh:/vault/agent/entrypoint.sh:ro
+      - vault-approle-credentials:/run/approle:ro
+      - vault-agent-secrets:/vault/secrets
+    networks: [default]
+    restart: unless-stopped
+    depends_on:
+      vault-rotator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /vault/secrets/token && test -s /vault/secrets/db-creds.json"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+networks:
+  default:
+    name: arcanium-vault-internal
+    external: true
+
+volumes:
+  vault-s-data: {}
+  vault-s-audit: {}
+  vault-1-data: {}
+  vault-1-audit: {}
+  vault-2-data: {}
+  vault-2-audit: {}
+  vault-3-data: {}
+  vault-3-audit: {}
+  # Shared AppRole credentials volume — vault-rotator writes here (rw),
+  # arcanium-vault-agent reads here (ro). Never mounted by any other container.
+  vault-approle-credentials: {}
+  # Rendered secrets volume — arcanium-vault-agent writes token + db-creds.json
+  # here; arcanium-api/worker/api-dev reference this as external.
+  vault-agent-secrets: {}
