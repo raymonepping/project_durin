@@ -272,3 +272,4 @@ compose/identity/ldap/bootstrap.ldif
 .agents
 .claude
 .codex
+state
