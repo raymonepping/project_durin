@@ -269,3 +269,6 @@ state/.capture-*.tmp/
 # durable configuration or reports, regenerated on every run.
 
 compose/identity/ldap/bootstrap.ldif
+.agents
+.claude
+.codex
