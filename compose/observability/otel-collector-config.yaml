@@ -1,5 +1,5 @@
 # OpenTelemetry Collector — Prompt 13
-# Receives OTLP from the Arcanium API; re-exports metrics for Prometheus to scrape.
+# Receives OTLP from the Durin backend; re-exports metrics for Prometheus to scrape.
 
 receivers:
   otlp:
@@ -14,7 +14,7 @@ processors:
   resource:
     attributes:
       - key: service.namespace
-        value: arcanium
+        value: durin
         action: upsert
 
 exporters:

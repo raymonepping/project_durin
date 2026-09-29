@@ -1,0 +1,33 @@
+# durin-transit-${tenant} — routine data authority for tenant ${tenant}.
+# Rendered from terraform/vault-transit/templates/tenant-policy.hcl.tftpl.
+
+# Customer PII
+path "transit/encrypt/durin-${tenant}-customer-data" {
+  capabilities = ["update"]
+}
+path "transit/decrypt/durin-${tenant}-customer-data" {
+  capabilities = ["update"]
+}
+path "transit/rewrap/durin-${tenant}-customer-data" {
+  capabilities = ["update"]
+}
+
+# Documents (PUBLIC / INTERNAL / CONFIDENTIAL)
+path "transit/encrypt/durin-${tenant}-documents" {
+  capabilities = ["update"]
+}
+path "transit/decrypt/durin-${tenant}-documents" {
+  capabilities = ["update"]
+}
+path "transit/rewrap/durin-${tenant}-documents" {
+  capabilities = ["update"]
+}
+
+# RESTRICTED documents — may protect and rewrap, may NOT recover.
+# Recovery requires durin-breakglass-${tenant}.
+path "transit/encrypt/durin-${tenant}-restricted" {
+  capabilities = ["update"]
+}
+path "transit/rewrap/durin-${tenant}-restricted" {
+  capabilities = ["update"]
+}

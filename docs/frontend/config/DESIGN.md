@@ -1,221 +1,301 @@
-# DESIGN.md — Arcanium
+---
+name: Durin Web Console
+description: Smart privacy glass for Vault-protected data — a value clears only where Vault authorised the signed-in person.
+colors:
+  ground: "#e9eef3"
+  ground-deep: "#dde4ec"
+  mullion: "#aeb9c6"
+  mullion-dark: "#7d8a99"
+  ink: "#0f1a2a"
+  ink-2: "#3e4c5f"
+  ink-3: "#526073"
+  clear: "#0f766e"
+  clear-soft: "#ccfbf1"
+  cipher: "#6d28d9"
+  cipher-soft: "#ede9fe"
+  authority: "#0369a1"
+  authority-soft: "#e0f2fe"
+  glass: "#b45309"
+  glass-soft: "#fef3c7"
+  denied: "#c81e1e"
+  denied-soft: "#fee2e2"
+  tenant-acme: "#2e6fd0"
+  tenant-globex: "#178a66"
+  tenant-initech: "#b83a6c"
+typography:
+  hero:
+    fontFamily: "Hanken Grotesk Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "2.35rem"
+    fontWeight: 800
+    lineHeight: 1.05
+    letterSpacing: "-0.035em"
+  page:
+    fontFamily: "Hanken Grotesk Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.75rem"
+    fontWeight: 700
+    lineHeight: 1.15
+    letterSpacing: "-0.022em"
+  section:
+    fontFamily: "Hanken Grotesk Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1.08rem"
+    fontWeight: 700
+    lineHeight: 1.3
+    letterSpacing: "-0.01em"
+  body:
+    fontFamily: "Hanken Grotesk Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "1rem"
+    fontWeight: 400
+    lineHeight: 1.55
+  label:
+    fontFamily: "Hanken Grotesk Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.8rem"
+    fontWeight: 600
+    lineHeight: 1.3
+  meta:
+    fontFamily: "Hanken Grotesk Variable, ui-sans-serif, system-ui, sans-serif"
+    fontSize: "0.82rem"
+    fontWeight: 400
+    lineHeight: 1.4
+  cipher:
+    fontFamily: "JetBrains Mono Variable, ui-monospace, SF Mono, monospace"
+    fontSize: "0.82rem"
+    fontWeight: 400
+    lineHeight: 1.45
+    letterSpacing: "-0.01em"
+rounded:
+  control: "9px"
+  frost: "10px"
+  pane: "14px"
+  pill: "999px"
+spacing:
+  gutter-phone: "16px"
+  gutter-desktop: "32px"
+  pane-pad: "20px"
+  pane-pad-lg: "24px"
+  stack: "20px"
+components:
+  button-primary:
+    backgroundColor: "{colors.ink}"
+    textColor: "#ffffff"
+    rounded: "{rounded.control}"
+    height: "2.4rem"
+    padding: "0 16px"
+  button-primary-hover:
+    backgroundColor: "#1c2b41"
+  button-glass:
+    backgroundColor: "rgb(255 255 255 / 0.66)"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    height: "2.4rem"
+    padding: "0 16px"
+  button-amber:
+    backgroundColor: "{colors.glass}"
+    textColor: "#ffffff"
+    rounded: "{rounded.control}"
+    height: "2.4rem"
+  button-danger:
+    backgroundColor: "{colors.denied}"
+    textColor: "#ffffff"
+    rounded: "{rounded.control}"
+    height: "2.4rem"
+  field:
+    backgroundColor: "rgb(255 255 255 / 0.72)"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    height: "2.5rem"
+    padding: "0 12px"
+  pane:
+    backgroundColor: "rgb(255 255 255 / 0.58)"
+    rounded: "{rounded.pane}"
+  pane-strong:
+    backgroundColor: "rgb(255 255 255 / 0.74)"
+    rounded: "{rounded.pane}"
+  ciphertext-well:
+    backgroundColor: "{colors.cipher-soft}"
+    textColor: "{colors.cipher}"
+    typography: "{typography.cipher}"
+    rounded: "{rounded.control}"
+---
 
-The project's visual contract. Derived from the existing, deployed
-application (`arcanium/ui/app/assets/css/main.css`, `app/layouts/default.vue`,
-and every page under `app/pages/`) — not an invented aesthetic. Where this
-document prescribes a value, that value is already in production use unless
-marked "(gap)".
+# Durin Web Console — design system
 
-See `PRODUCT.md` in this same folder for who the product is for and why.
+Source of truth: [ui/app/assets/css/main.css](../../../ui/app/assets/css/main.css)
+(tokens in `@theme`, component classes in `@layer components`). Direction
+contract: [.impeccable/surfaces/ui-app-app-vue.md](../../../.impeccable/surfaces/ui-app-app-vue.md).
+Product context: [PRODUCT.md](PRODUCT.md). Derived from
+`prompts/frontend/01_00_durin_design_spec.md`; where the two differ, this file
+records what shipped and why.
 
-## Product character
+## Overview
 
-A **command-center for cryptographic governance** — serious, dense,
-evidence-driven, dark by default. It should feel like an operations console
-for people whose job is proving controls actually work, not a marketing
-surface. Confidence comes from real numbers and real state transitions on
-screen, not from decoration.
+**North star: Smart Privacy Glass.** Durin answers one question at a glance:
+*who can turn this ciphertext back into plaintext?* Every protected value is a
+pane of switchable (PDLC) glass. PostgreSQL's `vault:vN:` ciphertext sits
+behind the frost; the pane clears only where Vault authorised the signed-in
+person, for one tenant, for five minutes. The frost is not decoration. It is
+the encryption state.
 
-## Audience
+The world is daylight office glazing: a pale mineral ground with thin
+brushed-aluminium mullions every 180px, frosted white panes with a hairline
+highlight and a soft offset shadow, graphite ink. Colour is reserved for
+meaning. Teal means cleared by Vault, violet means ciphertext, azure means
+who Vault authorised, amber means break glass, red means refused. Each
+tenant has one tint, used everywhere that tenant appears.
 
-Platform/security engineers operating Vault Enterprise day-to-day, plus
-auditors and evaluators reviewing governance evidence. See `PRODUCT.md`.
+Mode: **Operate**. A presenter drives it up close on a laptop while an
+audience reads over their shoulder. Scanability and truthful state beat
+expression, and the personality lives in the glass and in precise detail
+(time drawn to scale, versions struck through, Vault's verbatim answer next
+to the human sentence).
 
-## Design principles
+**The signature interaction: "The Clearing".** On a Vault ALLOWED, the pane's
+frost wipes away top to bottom in 520ms (`clip-path`, `--ease-out`) and its
+frame LED turns teal. On DENIED the pane stays frosted, the LED turns red and
+Vault's verdict is etched on the glass. One clearing per result, never
+ambient. Reduced motion makes it instant.
 
-- Clarity before decoration.
-- Information hierarchy before visual effects.
-- Predictable interaction — the same card/list/dialog pattern behaves the
-  same way everywhere in the app.
-- Accessible contrast is non-negotiable for meaning-bearing text (see
-  Color below — this is already a documented, enforced rule in the
-  codebase, not new policy).
-- Restrained motion — reduced-motion is honored globally
-  (`prefers-reduced-motion` zeroes all animation/transition durations,
-  `app/assets/css/main.css`).
-- Responsive by default, but optimized for desktop/laptop operational use
-  first; phone width is a "must remain usable," not the primary target.
+## Colors
+
+| Token | Hex | Role |
+| --- | --- | --- |
+| `ground` / `ground-deep` | #e9eef3 / #dde4ec | The building behind the glass. |
+| `mullion` / `mullion-dark` | #aeb9c6 / #7d8a99 | Aluminium frame lines, rails, idle LEDs. Decorative, never text. |
+| `ink` | #0f1a2a | Primary text, primary button. |
+| `ink-2` | #3e4c5f | Secondary text, ledes. |
+| `ink-3` | #526073 | Meta, captions, placeholders. 4.8:1 on `ground-deep`, the darkest ground it sits on (raised from #5d6b7e, which failed AA). |
+| `clear` (+ soft) | #0f766e | Cleared by Vault: plaintext LED, current key version, success. Darkened from the brief's #0d9488 (3.7:1) to 5.5:1 with white text (axe). |
+| `cipher` (+ soft) | #6d28d9 | Ciphertext only (`vault:vN:` in mono). Never used for anything else. |
+| `authority` (+ soft) | #0369a1 | Who Vault authorised: authority tags, roles, focus ring. |
+| `glass` (+ soft) | #b45309 | Break glass and emergency access only. |
+| `denied` (+ soft) | #c81e1e | Vault refused, compromise banner, retired versions. Darkened from the brief's #dc2626 for AA on the soft fill. |
+| `tenant-*` | #2e6fd0 / #178a66 / #b83a6c | ACME / Globex / Initech: pane top rule, pill square, audit pill. |
+
+**Rule: one meaning per hue.** A colour on screen is a claim about Vault
+state. Never tint a surface for decoration, and never reuse `clear`, `cipher`,
+`glass` or `denied` for chrome.
 
 ## Typography
 
-- **Sans (UI/body):** `"Inter", ui-sans-serif, system-ui, -apple-system, sans-serif`
-  at a 14px base, line-height 1.6 (`html, body` in `main.css`).
-- **Mono:** used deliberately for identifiers/technical values (node
-  names, key names, accessors) — e.g. `.arc-node-card__name { font-family:
-  monospace }`. Never used for prose.
-- **Headings/labels:** page titles ~15px/600 weight (`.page-title`); card
-  titles and section labels typically 11–13px, often with
-  `letter-spacing` for small-caps-style eyebrows (`.card-title`,
-  `.env-badge`) — used sparingly (dashboard section headers, status
-  badges), not stacked on every element.
-- **Body floor:** 12px is the accessible floor for any real body/paragraph
-  text. 10.5px was found in production use in one place (login page,
-  see `UI_AUDIT.md`) and corrected — do not reintroduce sub-12px body text.
+Hanken Grotesk Variable for everything human; JetBrains Mono Variable for
+anything a machine produced (ciphertext, key names, accessors, request ids,
+Vault paths, raw table cells). Root size is **15px**, so rem values are
+multiples of 15. The **floor is 0.8rem (12px)** for any text; the detector
+flagged 0.7–0.75rem labels as sub-12px, and they were all raised.
 
-## Color
+| Role | Size | Weight | Use |
+| --- | --- | --- | --- |
+| hero | 2.35rem | 800, -0.035em | Overview question only. |
+| page (`.h-page`) | 1.75rem | 700, -0.022em, balanced | One per screen. |
+| section (`.h-section`) | 1.08rem | 700 | Pane titles. |
+| body / lede (`.lede`) | 1rem, lh 1.55, max 68ch | 400 | Explanations. |
+| label (`.label`) | 0.8rem | 600 | Form labels, field labels. |
+| meta (`.meta`) | 0.82rem | 400, `ink-3` | Captions, timestamps. |
+| cipher (`.cipher`) | 0.82rem mono, violet, break-all | 400 | Ciphertext. The `vault:vN:` prefix is never truncated (`shortCipher`). |
 
-Semantic tokens, not scattered hex values — defined once in
-`app/assets/css/main.css`'s `:root` block:
+Numbers that change (counts, TTLs, clocks) use `.tabular`.
 
-```text
-background       --arc-bg-canvas       #001233
-surface          --arc-bg-surface      rgba(0,40,85,0.55)
-surface-elevated --arc-bg-elevated     #023e7d
-card             --arc-bg-card         rgba(10,26,54,0.72)
-glass panel      --arc-glass           rgba(11,27,54,0.62)
+## Layout
 
-text-primary     --arc-text-primary    #f0f4f8   ~16:1 on canvas
-text-secondary   --arc-text-secondary  #d4dae1   ~11:1 on canvas
-text-muted       --arc-text-muted      #9aa4b3   ~6.4:1 on canvas — AA body floor
-text-dim         --arc-text-dim        #7c8698   ~4.3:1 on canvas — AA LARGE/BOLD ONLY, not small body text
+- **Frame:** a 17rem frosted aluminium rail (sticky, full height) plus a 3.5rem
+  frame bar (sticky; tenant switcher, Vault LED pill, person and role, sign
+  out). Main content is max 84rem, padded 16px on phones and 32px on desktop.
+- **Below `lg` (1024px)** the rail becomes an off-canvas sheet behind a menu
+  button, and the frame bar keeps the tenant switcher and sign-out.
+- **The story rail:** the six story steps sit on one mullion line with a teal
+  "now" light that slides to the current step (500ms). Completed steps get teal
+  dots.
+- **Grids:** the tenant glass wall is 3 columns at `lg`. The Database Inspector
+  uses three equal `minmax(0,1fr)` panels with direction arrows between them at
+  `xl`, stacked below. Detail screens use content plus a 24rem side pane at `xl`.
+- **Overflow:** only tables and code scroll horizontally, each in its own
+  `overflow-auto` container. Selects never size to their longest option
+  (`w-full sm:w-[22rem]`), because that once pushed the phone Inspector to 496px.
 
-border           --arc-border-subtle / --arc-border-strong / --arc-glass-border
-accent           --arc-action-primary #0077b6 / --arc-action-bright #00b4d8
-focus            --arc-focus          #90e0ef  (>3:1 against every panel it lands on — enforced, see main.css comment)
+## Elevation & Depth
 
-success/healthy  --arc-healthy        #22c55e
-warning/pending  --arc-governance / --arc-pending  #ffaa00 / #ffb700
-error/critical   --arc-critical / --arc-denied      #dc2f02 / #d00000
-```
+Depth comes from glass, not from stacked shadows.
 
-**The contrast rule is already written into the codebase and must be
-preserved, not just aspired to** (`main.css`, above the token block):
-*"Never define a meaning-bearing colour below AA for its text size."*
-`--arc-text-dim` is rated for **large or bold text only** — using it for
-small (<14px) body copy is a violation of this project's own rule (this is
-exactly the bug found and fixed in `UI_AUDIT.md`'s login-page finding).
+- `.pane`: white 58%, `backdrop-filter: blur(22px) saturate(150%)`, 1px white
+  inset highlight, 1px `rgb(15 26 42 / 0.09)` outline, shadow
+  `0 1px 1px rgb(15 26 42/.04), 0 12px 32px -14px rgb(15 26 42/.22)`.
+- `.pane-strong`: white 74% (rails, bars, login card at 88%).
+- `.frost-layer`: white 42% plus `blur(7px)` plus an etched grain of 1px repeating
+  lines, so frost reads as glass and not as a grey box. It covers the
+  ciphertext, and `data-state="clear"` wipes it out.
+- Leader card on the Vault page: 2px teal ring plus a teal-tinted shadow. It is
+  the only coloured elevation.
 
-The dark-navy + cyan/blue palette with amber/red/green status accents is
-Arcanium's own established, consistent brand identity across every page —
-confirmed across all 14 primary routes. It happens to resemble a
-generically-flagged "AI dark-tech palette" per some generic linting
-heuristics; that similarity is coincidental to a genuinely deliberate,
-long-standing, consistently-applied product identity and is not evidence
-of templated/generic output. Do not replace it on that basis alone (see
-`UI_AUDIT.md` for the explicit tool-disagreement record).
+## Shapes
 
-## Spacing
-
-No single numeric scale is centrally declared; observed practice is
-predominantly **multiples of 4px** (4/6/8/10/12/14/16/20/24), with 16–24px
-as the standard card padding and 12–16px as the standard grid/flex gap.
-Preserve this rhythm; do not introduce arbitrary spacing values.
-
-## Radius
-
-`--arc-radius: 12px` (standard cards, buttons, inputs), `--arc-radius-lg:
-16px` (larger surfaces — dialogs, the login card). Pills (badges, chips,
-persona/status indicators) use `border-radius: 100px`. This is a two-tier
-scale (12/16 + pill) — do not introduce a third arbitrary radius value.
-
-## Shadows
-
-`--arc-shadow-md` (elevated cards) and `--arc-shadow-lg` (dialogs,
-dropdowns) — both neutral, dark, offset-down shadows (`rgba(0,8,24,…)`),
-never a colored/glow shadow used for elevation. (A small number of
-deliberate colored **glow** effects exist as status/liveness accents —
-e.g. the pulsing cluster-health dot — distinct from elevation shadows and
-used sparingly; do not expand this to general-purpose card elevation.)
+`control` 9px (buttons, fields, wells) · `frost` 10px (protected values) ·
+`pane` 14px · `pill` 999px (status chips, LEDs). The frame bar and rail are
+square (`!rounded-none`): they are the building, not objects in it. LEDs are
+7px dots with a 2px white halo. Coloured top rules (4px) mark tenant panes and
+break-glass cards.
 
 ## Components
 
-- **Buttons:** `.primary-button` (solid accent-gradient fill, used for the
-  one primary action per view — e.g. login's "Sign in"); pill-shaped
-  status/filter chips; icon+label topbar actions.
-- **Inputs:** label-above pattern, `.filter-bar`/`.form-field` inputs with
-  visible `:focus-visible` rings (`--arc-focus`, enforced even where the
-  mouse-hover outline is intentionally suppressed — see `main.css`
-  comment referencing this exact accessibility fix).
-- **Cards:** `.dash-card` / `.arc-node-card` / key-inventory cards — one
-  consistent card shell (surface color + border + radius + padding) reused
-  across dashboard, keys, cluster, teams.
-- **Navigation:** fixed left sidebar (collapsible) + sticky topbar
-  (search trigger, cluster-health pill, pending-approvals pill, persona
-  menu). One navigation pattern, not a per-page bespoke nav.
-- **Tables/lists:** card-per-row lists (keys, suppliers) rather than dense
-  HTML tables — appropriate for this content's field count and mobile
-  behaviour.
-- **Dialogs:** `ManagementDialog.vue` — a single shared dialog component,
-  reused rather than one-off modals per action.
-- **Alerts/notices:** `.inline-notice` (error/info variants).
-- **Badges:** pill badges for tier/status (`PREMIUM`, `STANDARD`,
-  `DEMONSTRATED`, environment tags).
+- **FrostValue:** the protected value. States are `frosted` (ciphertext behind
+  frost, "Frosted" badge, grey LED), `clear` (plaintext, open-lock, pulsing teal
+  LED), and `denied` (frost tinted red, "Denied" badge, the human sentence plus
+  the verbatim code). Key name and version are etched above; retired versions
+  are struck through in red.
+- **VaultVerdict:** ALLOWED/DENIED, a title, the human sentence, and Vault's
+  verbatim status, path and errors in mono. Shows "expected X" when a scenario
+  predicts the result.
+- **AuthorityTag:** "Vault authorised **raymon** for **ACME** · auth/jwt ·
+  tenant-acme" with an optional TTL bar. The point of the demo, so it is never
+  hidden in a tooltip.
+- **TtlBar:** time drawn to scale. The bar's length is the exact fraction of
+  seconds left (5-minute tokens, 15-minute control groups).
+- **KeyChip:** versions as chips. The current version is teal and bold,
+  versions below `min_decryption_version` are struck red, and runs of more than
+  three retired versions collapse to one `v1–vN` range chip.
+- **Buttons:** `.btn-primary` (ink) for the one primary action per view,
+  `.btn-glass` for everything else, `.btn-amber` only for break glass,
+  `.btn-danger` only for simulating the compromise. A disabled button always
+  shows its reason beside it or in `title` ("Requires durin-operator — Vault
+  only issues data authority to operators").
+- **ErrorNote:** API errors are values. It shows a human sentence
+  (`ERROR_SENTENCE`) plus `status · code · vault status` in mono. There is no
+  generic "something went wrong".
+- **Break-glass card:** amber top rule, BREAK GLASS REQUEST, status pill, a
+  requested-by / reason / resource / Vault (control group · 1 approval from
+  durin-security-admins · expires) grid, an amber TTL bar and the wrapping
+  accessor. There is never a "copy token" affordance, because no bearer token
+  exists.
 
-Only components that exist or are genuinely needed are documented here —
-this list is not aspirational.
+## Do's and Don'ts
 
-## Responsive behaviour
+- **Do** show Vault's real answer (status, path, accessor, audit id) next to
+  every human sentence.
+- **Do** keep component classes in `@layer components`. Unlayered, they beat
+  Tailwind utilities (`fixed`, `sticky`, `hidden`), which broke the phone rail
+  and sticky header until they were moved.
+- **Do** keep `vault:vN:` visible whenever ciphertext is shortened.
+- **Do** disable, never hide, an action the current person may not take, and
+  say why.
+- **Don't** simulate a verdict client-side, fall back to plaintext, or animate
+  a clearing without an ALLOWED behind it.
+- **Don't** use HashiCorp brand colours or marks; Durin has its own identity.
+- **Don't** add KPI hero cards, gradient text, glass as a decorative panel
+  effect, or ambient motion. Frost means encryption and nothing else.
+- **Don't** put tokens, JWTs or Vault credentials in the browser. The BFF keeps
+  them, and the UI shows only identity (name, roles, tenants).
 
-- **Desktop (1440×900) / Laptop (1280×800):** full sidebar + topbar, all
-  grids at their full column count.
-- **≤1180px:** topbar sheds secondary text labels (env badge, Vault-UI
-  link label, persona label) to make room, icons remain.
-- **≤900px:** sidebar collapses (icon rail or hidden, per
-  `default.vue`/`main.css`), multi-column grids (`.arc-grid-2/3`,
-  `.arc-kpi-strip`, the cryptographic-lifecycle rail) drop to fewer
-  columns.
-- **≤640px (mobile):** topbar hides the search trigger entirely and drops
-  secondary status text (cluster label, "pending" word) to fit the
-  viewport without clipping or overlap — added this pass, see
-  `UI_AUDIT.md`.
-- **≤560px:** the remaining multi-column grids fully stack to one column.
+## Taste configuration
 
-Every breakpoint must leave the topbar's page title, cluster/pending
-status, and primary navigation legible and un-clipped — this was a real,
-confirmed defect below 640px before this pass (see `UI_AUDIT.md`) and is
-now the enforced minimum bar for any future topbar change.
+`design-taste-frontend` (Taste) controls, set conservatively for an existing
+presenter-driven operations console:
 
-## Motion
+| Control | Value (1–10) | Why |
+| --- | --- | --- |
+| `DESIGN_VARIANCE` | 4 | One strong idea (privacy glass) applied consistently. Screens vary only where the story does (Inspector's three panels, Shield's step ladder). |
+| `MOTION_INTENSITY` | 3 | One meaningful motion (The Clearing, 520ms) plus 180ms state transitions and the sliding "now" light. Nothing ambient. Reduced motion is instant. |
+| `VISUAL_DENSITY` | 6 | The audience reads over a shoulder, but each screen must carry evidence (key versions, accessors, audit ids). Dense tables are allowed for raw rows and audit; story screens stay airy. |
 
-- Global `prefers-reduced-motion: reduce` support (zeroes all
-  animation/transition durations) — already implemented, must never
-  regress.
-- Motion in production use is limited to: sidebar collapse width
-  transition, a live-pulse dot on healthy cluster status, hover-state
-  color/border transitions, and dropdown/menu open transitions. No
-  scroll-hijacking, no decorative looping animation, no motion without a
-  state it is communicating.
-- Prohibited: adding an animation library (Motion/GSAP/etc.) for effects
-  achievable in CSS; motion that fires on page load purely for spectacle;
-  motion that cannot be disabled by `prefers-reduced-motion`.
-
-## Accessibility
-
-- Keyboard navigation and a `.skip-link` ("Skip to content") are already
-  implemented — preserve.
-- `*:focus-visible` shows a visible ring app-wide; several inputs
-  deliberately suppress the *mouse*-hover outline but must keep the
-  keyboard-visible one (`main.css`, documented inline).
-- Semantic markup: real `<nav>`, `<main id="main-content">`, heading
-  levels — preserve existing structure when editing a page.
-- Contrast: enforce the AA table under Color above. `--arc-text-dim` is
-  large/bold-only; never pair it with body-sized (<14px) text.
-- Touch targets: nav items, pills, and cards already meet a reasonable
-  tap-target size on the mobile screenshots reviewed this pass; keep new
-  interactive elements at a comparable size (~34px+ effective height).
-- ARIA only where semantic HTML is insufficient (e.g. `role="status"` on
-  the live cluster-health indicator).
-
-## Anti-patterns
-
-Explicitly avoided, and to be reverted on sight if introduced:
-
-- Unnecessary gradients beyond the two already-established uses (subtle
-  radial glows on hero/login surfaces, the accent button gradient) —
-  do not add more.
-- Cards nested within cards without a real hierarchy reason.
-- Decorative icon tiles with no informational purpose.
-- Excessive or gratuitous animation (see Motion above).
-- Low-contrast text for anything meaning-bearing (see Color above).
-- Inconsistent spacing — stick to the 4px-multiple rhythm.
-- Arbitrary new component variants when an existing card/badge/button
-  pattern already covers the case.
-- Gratuitous glassmorphism beyond the existing, restrained
-  `backdrop-filter` use on the topbar and login/dialog surfaces.
-- A fixed multi-column grid with no responsive fallback (the exact defect
-  found and fixed this pass — see `UI_AUDIT.md`).
-- Introducing a marketing-landing-page design vocabulary (hero sections
-  with word-count limits, bento grids, scroll-hijacking, eyebrow labels
-  on every section) — this is an operational dashboard, not a landing
-  page; see `UI_AUDIT.md`'s note on `design-taste-frontend`'s own stated
-  scope exclusion of dashboards.
+Awesome DESIGN.md (reference collection, 03_01 §15) has **not** been consulted
+for this version: the system above comes from the Durin brief (01_00), the
+Impeccable direction contract and the rendered console. The blur needs a
+structured backdrop to read as glass, which is why the mullions exist; that is
+Durin's own rule, not a borrowed one.

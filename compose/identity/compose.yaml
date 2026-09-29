@@ -1,88 +1,103 @@
-# Prompt 18 — Identity stack: OpenLDAP (identity store) + Keycloak (OIDC broker).
+# compose/identity/compose.yaml — Durin Identity Stack
 #
-# Adapted from workshop/zero_trust and Personal/vault_reference — NOT copied
-# verbatim (see prompts/18_security_foundation.md "Feasibility note"):
-#   - fresh, Arcanium-specific LDAP fixture (no real personal data)
-#   - Keycloak issues ONE confidential client only — no public/SPA client
-#   - dual-hostname Keycloak config (public vs internal) instead of relying
-#     on host.docker.internal, which is Docker-Desktop-specific and not
-#     assumed to behave identically under this Podman machine
+# OpenLDAP (identity store) + Keycloak (OIDC broker).
+# prompts/security/17_01 (topology from Arcanium) + 17_02 (completion).
 #
-# Arcanium's own API (arcanium-api) is the OIDC client. It reaches Keycloak
-# over the shared arcanium-control network using the container DNS name
-# (http://keycloak:8080) for every server-to-server call — token exchange,
-# JWKS fetch, userinfo, end-session. Only the browser-facing authorization
-# redirect uses the published host port (KC_HOSTNAME), because the browser
-# runs on the host, outside every container network.
+#   realm    durin        clients  durin-backend (Web Console), durin-cli (lab tests)
+#   roles    durin-viewer, durin-operator, durin-security-admin  (LDAP groups → realm roles)
+#   users    raymon, barend, security-admin, viewer
+#   tenants  durin_tenants claim from LDAP businessCategory
+#
+# Secrets (pattern from Editors Factory): every password lives in Vault KV
+# (secret/durin/identity/*). identity-secrets-init logs in once with AppRole
+# durin-identity-secrets through vault-lb, renders the values onto the
+# identity-secrets volume and revokes its token. Nothing here reads .env for a
+# secret. Seed/rotate with scripts/identity-secrets.sh.
+#
+# The Durin backend reaches Keycloak over durin-internal (http://keycloak:8080)
+# for JWKS; browsers use the published port (http://localhost:8083).
+
 services:
+  identity-secrets-init:
+    image: docker.io/hashicorp/vault-enterprise:2.1.0-ent
+    container_name: durin-identity-secrets-init
+    entrypoint: ["/bin/sh", "/init/entrypoint.sh"]
+    environment:
+      VAULT_ADDR: "https://vault-lb:8200"
+      VAULT_CACERT: "/vault/tls/ca-chain.pem"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ../../vault-tls:/vault/tls:ro
+      - ./identity-secrets/entrypoint.sh:/init/entrypoint.sh:ro
+      # Only the two AppRole files — never the whole .secrets/vault directory
+      # (it also holds the cluster root token).
+      - ../../.secrets/vault/identity-role-id:/approle/identity-role-id:ro
+      - ../../.secrets/vault/identity-secret-id:/approle/identity-secret-id:ro
+      - identity-secrets:/run/secrets
+    networks: [durin-internal]
+    restart: "no"
+
   openldap:
     image: docker.io/osixia/openldap:1.5.0
-    container_name: arcanium-openldap
+    container_name: durin-openldap
     hostname: openldap
     environment:
-      LDAP_ORGANISATION: "Arcanium"
-      LDAP_DOMAIN: "arcanium.local"
-      LDAP_BASE_DN: "dc=arcanium,dc=local"
-      LDAP_ADMIN_PASSWORD: "${LDAP_ADMIN_PASSWORD}"
+      LDAP_ORGANISATION: "Durin"
+      LDAP_DOMAIN: "durin.local"
+      LDAP_BASE_DN: "dc=durin,dc=local"
+      LDAP_ADMIN_PASSWORD_FILE: "/run/secrets/ldap-admin-password"
       LDAP_TLS: "false"
     cap_drop: [ALL]
-    # KILL is required by osixia/openldap's own startup sequence (it starts
-    # a temporary slapd, then signals it to stop before the real one takes
-    # over) — found by actually running this, not assumed; without it the
-    # entrypoint fails with "kill: Operation not permitted" on every start.
     cap_add: [NET_BIND_SERVICE, CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID, KILL]
     security_opt: ["no-new-privileges:true"]
     volumes:
       - ldap-data:/var/lib/ldap
       - ldap-config:/etc/ldap/slapd.d
-    networks: [arcanium-control]
+      - identity-secrets:/run/secrets:ro
+    networks: [durin-internal]
     restart: unless-stopped
+    depends_on:
+      identity-secrets-init:
+        condition: service_completed_successfully
     healthcheck:
-      # Found by actually running this: osixia/openldap restricts anonymous
-      # bind by default (ACL), so an unauthenticated search returns "no such
-      # object" (32) even once the base DN genuinely exists and is fully
-      # populated — it's hiding existence from an unauthenticated caller,
-      # not reporting an empty tree. An anonymous healthcheck can never pass.
-      test: ["CMD", "ldapsearch", "-x", "-H", "ldap://localhost", "-D", "cn=admin,dc=arcanium,dc=local", "-w", "${LDAP_ADMIN_PASSWORD}", "-b", "dc=arcanium,dc=local", "-s", "base"]
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost -D cn=admin,dc=durin,dc=local -w \"$$(cat /run/secrets/ldap-admin-password)\" -b dc=durin,dc=local -s base >/dev/null"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 10s
 
-  # One-shot: loads compose/identity/ldap/bootstrap.ldif. Idempotent — safe to
-  # re-run (setup_ldap.sh checks each entry before adding it). Never runs on a
-  # plain `up`; only via `--profile init` (see `make identity-bootstrap`).
+  # One-shot: loads bootstrap.ldif and sets user passwords from Vault KV.
+  # Only runs via `--profile init` (make identity-bootstrap).
   ldap-bootstrap:
     image: docker.io/osixia/openldap:1.5.0
-    container_name: arcanium-ldap-bootstrap
+    container_name: durin-ldap-bootstrap
     profiles: ["init"]
     environment:
-      LDAP_ADMIN_PASSWORD: "${LDAP_ADMIN_PASSWORD}"
-      LDAP_BASE_DN: "dc=arcanium,dc=local"
+      LDAP_BASE_DN: "dc=durin,dc=local"
       LDAP_HOST: "openldap"
     entrypoint: ["/bootstrap/setup_ldap.sh"]
     volumes:
       - ./ldap:/bootstrap:ro
-    networks: [arcanium-control]
+      - identity-secrets:/run/secrets:ro
+    networks: [durin-internal]
     depends_on:
       openldap:
         condition: service_healthy
 
   ldap-admin:
     image: docker.io/osixia/phpldapadmin:0.9.0
-    container_name: arcanium-ldap-admin
+    container_name: durin-ldap-admin
     hostname: ldap-admin
     environment:
       PHPLDAPADMIN_LDAP_HOSTS: "openldap"
       PHPLDAPADMIN_HTTPS: "false"
     cap_drop: [ALL]
-    # Same osixia s6-overlay startup pattern as openldap above — needs KILL
-    # for the same reason (found by running it, not assumed).
     cap_add: [NET_BIND_SERVICE, CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID, KILL]
     security_opt: ["no-new-privileges:true"]
     ports:
       - "127.0.0.1:8084:80"
-    networks: [arcanium-control]
+    networks: [durin-internal]
     depends_on:
       openldap:
         condition: service_healthy
@@ -90,25 +105,17 @@ services:
 
   keycloak:
     image: docker.io/keycloak/keycloak:26.6.4
-    container_name: arcanium-keycloak
+    container_name: durin-keycloak
     hostname: keycloak
-    # No --import-realm: the realm is created idempotently by
-    # keycloak-bootstrap's kcadm script, not from a mounted realm file.
-    # start-dev stores its H2 database under /opt/keycloak/data — mounting
-    # a named volume there makes the realm, client, and LDAP federation
-    # survive container restarts and podman machine stop/start cycles.
+    # Exports the Vault-sourced bootstrap admin password, then execs kc.sh.
+    entrypoint: ["/bin/sh", "/vault/vault-entrypoint.sh"]
     command: start-dev
     environment:
-      KEYCLOAK_ADMIN: "${KEYCLOAK_ADMIN}"
-      KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD}"
+      KEYCLOAK_ADMIN: "${KEYCLOAK_ADMIN:-admin}"
       KC_HTTP_ENABLED: "true"
-      # Public/browser-facing hostname only — this is what Keycloak stamps
-      # into the `iss` claim and the endpoints it hands back to the browser.
-      # Arcanium's server-side OIDC calls do NOT use this; they go straight
-      # to http://keycloak:8080 over arcanium-control. See
-      # ARCANIUM_OIDC_ISSUER / ARCANIUM_OIDC_INTERNAL_URL /
-      # ARCANIUM_OIDC_PUBLIC_URL in compose/arcanium/compose.yaml.
-      KC_HOSTNAME: "${KC_HOSTNAME:-localhost:8083}"
+      KC_HOSTNAME: "${KC_HOSTNAME:-http://localhost:8083}"
+      # Browser-facing issuer is fixed; internal callers (backend JWKS, kcadm) use keycloak:8080.
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       KC_HOSTNAME_STRICT: "false"
       KC_PROXY_HEADERS: "xforwarded"
     cap_drop: [ALL]
@@ -118,48 +125,47 @@ services:
       - "127.0.0.1:8083:8080"
     volumes:
       - keycloak-data:/opt/keycloak/data
-    networks: [arcanium-control]
+      - ./keycloak/vault-entrypoint.sh:/vault/vault-entrypoint.sh:ro
+      - identity-secrets:/run/secrets:ro
+    networks: [durin-internal]
     depends_on:
       openldap:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      # /health/ready lives on the separate management port (9000 by
-      # default) which this compose file doesn't publish — found by actually
-      # checking, not assumed from the docs. The realm's own well-known
-      # config on the main port is a simpler, equally valid liveness/
-      # readiness signal and doesn't need wget/curl inside this minimal image.
       test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /realms/master/.well-known/openid-configuration HTTP/1.1\\r\\nhost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '200 OK' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 15
       start_period: 30s
 
-  # One-shot: realm + LDAP federation + confidential client + group mapper.
-  # Idempotent (setup_keycloak.sh checks-then-creates every resource).
+  # One-shot: realm, LDAP federation + mappers, clients, claims.
+  # Only runs via `--profile init` (make identity-bootstrap).
   keycloak-bootstrap:
     image: docker.io/keycloak/keycloak:26.6.4
-    container_name: arcanium-keycloak-bootstrap
+    container_name: durin-keycloak-bootstrap
     profiles: ["init"]
     entrypoint: ["/bin/bash", "/bootstrap/setup_keycloak.sh"]
     environment:
-      KEYCLOAK_ADMIN: "${KEYCLOAK_ADMIN}"
-      KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD}"
-      LDAP_ADMIN_PASSWORD: "${LDAP_ADMIN_PASSWORD}"
+      KEYCLOAK_ADMIN: "${KEYCLOAK_ADMIN:-admin}"
       KC_INTERNAL_URL: "http://keycloak:8080"
     volumes:
       - ./keycloak:/bootstrap:ro
-    networks: [arcanium-control]
+      - identity-secrets:/run/secrets:ro
+    networks: [durin-internal]
     depends_on:
       keycloak:
         condition: service_healthy
+      ldap-bootstrap:
+        condition: service_completed_successfully
 
 networks:
-  arcanium-control:
-    name: arcanium-control
+  durin-internal:
+    name: durin-internal
     external: true
 
 volumes:
   ldap-data: {}
   ldap-config: {}
   keycloak-data: {}
+  identity-secrets: {}

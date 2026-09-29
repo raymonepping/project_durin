@@ -1,8 +1,10 @@
 #!/bin/sh
+# scripts/compose.sh — thin Podman Compose wrapper for Durin stacks.
+# Usage: compose.sh <stack> <compose arguments...>
 set -eu
 
 if [ "$#" -lt 2 ]; then
-  echo "Usage: $0 <vault|infra|identity|ollama|api|agents|ui> <compose arguments...>" >&2
+  echo "Usage: $0 <vault|infra|backend|ui|identity|observability> <compose arguments...>" >&2
   exit 64
 fi
 
@@ -10,7 +12,7 @@ stack=$1
 shift
 
 case "$stack" in
-vault | infra | identity | ollama | api | agents | ui) ;;
+vault | infra | backend | ui | identity | observability) ;;
 *)
   echo "Unknown stack: $stack" >&2
   exit 64
@@ -30,12 +32,9 @@ if ! command -v podman >/dev/null 2>&1; then
   exit 69
 fi
 
-: "${PODMAN_COMPOSE_PROVIDER:=podman-compose}"
-export PODMAN_COMPOSE_PROVIDER
-
 run_compose() {
   podman compose \
-    --project-name "factory-$stack" \
+    --project-name "durin-$stack" \
     --file "$compose_file" \
     --env-file "$project_root/.env" \
     "$@"
@@ -44,7 +43,7 @@ run_compose() {
 first_arg="${1:-}"
 if [ "$first_arg" != "up" ]; then
   exec podman compose \
-    --project-name "factory-$stack" \
+    --project-name "durin-$stack" \
     --file "$compose_file" \
     --env-file "$project_root/.env" \
     "$@"

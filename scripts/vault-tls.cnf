@@ -1,4 +1,4 @@
 basicConstraints=critical,CA:FALSE
 keyUsage=critical,digitalSignature,keyEncipherment
 extendedKeyUsage=serverAuth,clientAuth
-subjectAltName=DNS:localhost,DNS:vault-s,DNS:vault-1,DNS:vault-2,DNS:vault-3,DNS:vault-hsm,DNS:arcanium-vault-s,DNS:arcanium-vault-1,DNS:arcanium-vault-2,DNS:arcanium-vault-3,DNS:arcanium-vault_hsm,IP:127.0.0.1
+subjectAltName=DNS:localhost,DNS:vault-lb,DNS:durin-vault_lb,DNS:vault-s,DNS:vault-1,DNS:vault-2,DNS:vault-3,DNS:durin-vault-s,DNS:durin-vault-1,DNS:durin-vault-2,DNS:durin-vault-3,IP:127.0.0.1

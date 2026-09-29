@@ -1,0 +1,59 @@
+# compose/backend/compose.yaml — Durin backend API + Vault Agent
+#
+# durin-backend: the application API including the Data Trust Gateway.
+#   Reads Vault token + DB credentials from vault-agent-secrets (managed
+#   by durin-vault-agent in the vault stack).
+#
+# This file is a placeholder — see prompts/base_project/05_01_workloads_stack.md
+# for the full implementation spec.
+
+networks:
+  durin-internal:
+    name: durin-internal
+    external: true
+
+volumes:
+  vault-agent-secrets:
+    external: true
+    name: durin-vault_vault-agent-secrets
+
+services:
+  durin-backend:
+    build:
+      context: ../../backend
+      dockerfile: Containerfile
+    image: durin-backend:local
+    container_name: durin-backend
+    hostname: durin-backend
+    user: "1000:1000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      PORT: "3001"
+      VAULT_ADDR: "https://vault-lb:8200"
+      VAULT_AGENT_TOKEN_FILE: "/vault/secrets/token"
+      VAULT_DB_CREDS_FILE: "/vault/secrets/db-creds.json"
+      NODE_EXTRA_CA_CERTS: "/vault/tls/ca-chain.pem"
+      POSTGRES_HOST: "postgres"
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: "${POSTGRES_DB}"
+      # RBAC — set DURIN_AUTH_ENABLED=true once identity stack is running
+      DURIN_AUTH_ENABLED: "${DURIN_AUTH_ENABLED:-false}"
+      DURIN_JWKS_URI: "${DURIN_JWKS_URI:-}"
+      DURIN_OIDC_ISSUER: "${DURIN_OIDC_ISSUER:-}"
+      DURIN_OIDC_AUDIENCE: "${DURIN_OIDC_AUDIENCE:-durin-api}"
+    volumes:
+      - ../../vault-tls:/vault/tls:ro
+      - vault-agent-secrets:/vault/secrets:ro
+    ports:
+      - "127.0.0.1:3001:3001"
+    networks: [durin-internal]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s

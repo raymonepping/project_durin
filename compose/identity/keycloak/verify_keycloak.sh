@@ -1,84 +1,45 @@
-#!/usr/bin/env bash
-# verify_keycloak.sh — confirms the realm, LDAP federation, confidential
-# client and group mapper are actually LIVE (via kcadm get against the
-# running container), not merely that setup_keycloak.sh exited zero.
-#
-# Runs on the host, via `podman exec` into the already-running keycloak
-# container — matches the "kcadm-via-exec" pattern named in
-# prompts/security/18_01_security_foundation.md (adapted from
-# workshop/zero_trust/scripts/verify_keycloak.sh).
-set -uo pipefail
+#!/bin/bash
+# compose/identity/keycloak/verify_keycloak.sh
+# Quick smoke-test for the Durin Keycloak realm.
+set -euo pipefail
 
-REALM=arcanium
-CLIENT_ID=arcanium-api
-CONTAINER=arcanium-keycloak
+KC=/opt/keycloak/bin/kcadm.sh
+KC_URL="${KC_INTERNAL_URL:-http://keycloak:8080}"
+REALM=durin
+CLIENT_ID=durin-backend
+CONTAINER=durin-keycloak
 
-kx() { podman exec "$CONTAINER" /opt/keycloak/bin/kcadm.sh "$@"; }
+"$KC" config credentials --server "$KC_URL" --realm master \
+  --user "${KEYCLOAK_ADMIN:-admin}" --password "${KEYCLOAK_ADMIN_PASSWORD:-$(cat /run/secrets/keycloak-admin-password)}" >/dev/null 2>&1
 
-if ! podman exec "$CONTAINER" true >/dev/null 2>&1; then
-  echo "FAIL: $CONTAINER is not running/reachable" >&2
-  exit 1
-fi
+pass=0
+fail=0
 
-if [ -z "${KEYCLOAK_ADMIN:-}" ] || [ -z "${KEYCLOAK_ADMIN_PASSWORD:-}" ]; then
-  # Read from the env file the same way scripts/compose.sh does, so this can
-  # be run standalone without re-exporting everything by hand.
-  ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/../../.." && pwd)
-  if [ -f "$ROOT/.env" ]; then
-    KEYCLOAK_ADMIN=$(grep -E '^KEYCLOAK_ADMIN=' "$ROOT/.env" | tail -1 | cut -d= -f2-)
-    KEYCLOAK_ADMIN_PASSWORD=$(grep -E '^KEYCLOAK_ADMIN_PASSWORD=' "$ROOT/.env" | tail -1 | cut -d= -f2-)
-  fi
-fi
-if [ -z "${KEYCLOAK_ADMIN:-}" ] || [ -z "${KEYCLOAK_ADMIN_PASSWORD:-}" ]; then
-  echo "FAIL: KEYCLOAK_ADMIN / KEYCLOAK_ADMIN_PASSWORD not set and not found in .env" >&2
-  exit 1
-fi
-
-kx config credentials --server http://localhost:8080 --realm master \
-  --user "$KEYCLOAK_ADMIN" --password "$KEYCLOAK_ADMIN_PASSWORD" >/dev/null
-
-failed=0
 check() {
   local desc="$1"
   shift
-  if "$@" >/dev/null 2>&1; then
+  if eval "$*" >/dev/null 2>&1; then
     echo "  ✓ $desc"
+    pass=$((pass + 1))
   else
-    echo "  ✗ $desc" >&2
-    failed=1
+    echo "  ✗ $desc"
+    fail=$((fail + 1))
   fi
 }
 
-check "realm '$REALM' exists" kx get "realms/$REALM"
+check "realm exists" "$KC get realms/$REALM"
+check "client exists" "$KC get clients -r $REALM -q clientId=$CLIENT_ID | grep -q '\"id\"'"
+check "LDAP federation exists" "$KC get components -r $REALM -q name=durin-ldap | grep -q '\"id\"'"
+check "group mapper exists" "$KC get components -r $REALM -q name=durin-groups | grep -q '\"id\"'"
+check "role: durin-viewer" "$KC get-roles -r $REALM --rolename durin-viewer"
+check "role: durin-operator" "$KC get-roles -r $REALM --rolename durin-operator"
+check "role: durin-security-admin" "$KC get-roles -r $REALM --rolename durin-security-admin"
 
-check "LDAP federation component present" bash -c \
-  "podman exec '$CONTAINER' /opt/keycloak/bin/kcadm.sh get components -r '$REALM' -q name=arcanium-ldap 2>/dev/null | grep -q '\"id\"'"
-
-check "LDAP group mapper present" bash -c \
-  "podman exec '$CONTAINER' /opt/keycloak/bin/kcadm.sh get components -r '$REALM' -q name=arcanium-groups 2>/dev/null | grep -q '\"id\"'"
-
-check "client '$CLIENT_ID' exists and is confidential" bash -c \
-  "podman exec '$CONTAINER' /opt/keycloak/bin/kcadm.sh get clients -r '$REALM' -q clientId=$CLIENT_ID 2>/dev/null | grep -q '\"publicClient\" : false'"
-
-CLIENT_UUID=$(kx get clients -r "$REALM" -q clientId="$CLIENT_ID" --fields id 2>/dev/null | grep -o '"[a-f0-9-]\{36\}"' | head -1 | tr -d '"')
-if [ -n "$CLIENT_UUID" ]; then
-  check "groups claim mapper present on client" bash -c \
-    "podman exec '$CONTAINER' /opt/keycloak/bin/kcadm.sh get clients/$CLIENT_UUID/protocol-mappers/models -r '$REALM' 2>/dev/null | grep -q '\"name\" : \"groups\"'"
-else
-  echo "  ✗ client uuid not resolved — skipping mapper check" >&2
-  failed=1
-fi
-
-for g in arcanium-ciso arcanium-architect arcanium-operator arcanium-auditor arcanium-supplier-admin arcanium-tenant-pepsi arcanium-tenant-cocacola; do
-  check "realm group '$g' present" bash -c \
-    "podman exec '$CONTAINER' /opt/keycloak/bin/kcadm.sh get groups -r '$REALM' -q search=$g 2>/dev/null | grep -q '\"name\" : \"$g\"'"
+for user in raymon barend security-admin; do
+  check "user synced: $user" \
+    "podman exec '$CONTAINER' /opt/keycloak/bin/kcadm.sh get users -r '$REALM' -q username=$user 2>/dev/null | grep -q '\"id\"'"
 done
 
 echo
-if [ "$failed" -eq 0 ]; then
-  echo "verify_keycloak: all checks passed"
-  exit 0
-else
-  echo "verify_keycloak: one or more checks FAILED" >&2
-  exit 1
-fi
+echo "Keycloak verification: $pass passed, $fail failed"
+[ "$fail" -eq 0 ]

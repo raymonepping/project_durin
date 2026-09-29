@@ -1,0 +1,1 @@
+docs/frontend/config/PRODUCT.md

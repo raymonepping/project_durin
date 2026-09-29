@@ -1,29 +1,76 @@
-# Nuxt frontend — the factory dashboard.
-# prompts/frontend/01_01_factory_dashboard_ui.md.
-
-networks:
-  default:
-    name: factory-control
-    external: true
+# compose/ui/compose.yaml — Durin Web Console
+# prompts/frontend/01_02 (BFF) + 01_03 (console).
+#
+# Nuxt 4 SPA served by its own Nitro server, which is also the
+# backend-for-frontend: OIDC code + PKCE with Keycloak happens server-side,
+# tokens live in a server-side session, the browser holds only an httpOnly
+# session cookie and talks to /api/v1/* on this origin. The BFF forwards the
+# user's access token to durin-backend over durin-internal.
+#
+# Secrets: the OIDC client secret comes from Vault KV via the one-shot
+# ui-secrets-init (AppRole durin-ui, read on that one path only). durin-ui
+# never holds a Vault token. Nothing here reads a secret from .env.
 
 services:
-  ui:
+  ui-secrets-init:
+    image: docker.io/hashicorp/vault-enterprise:2.1.0-ent
+    container_name: durin-ui-secrets-init
+    entrypoint: ["/bin/sh", "/init/entrypoint.sh"]
+    environment:
+      VAULT_ADDR: "https://vault-lb:8200"
+      VAULT_CACERT: "/vault/tls/ca-chain.pem"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ../../vault-tls:/vault/tls:ro
+      - ./ui-secrets/entrypoint.sh:/init/entrypoint.sh:ro
+      # Only the two AppRole files — never the whole .secrets/vault directory.
+      - ../../.secrets/vault/ui-role-id:/approle/ui-role-id:ro
+      - ../../.secrets/vault/ui-secret-id:/approle/ui-secret-id:ro
+      - ui-secrets:/run/secrets
+    networks: [durin-internal]
+    restart: "no"
+
+  durin-ui:
     build:
       context: ../../ui
       dockerfile: Containerfile
-    image: factory-ui:local
-    container_name: factory-ui
-    hostname: ui
+    image: durin-ui:local
+    container_name: durin-ui
+    hostname: durin-ui
     environment:
-      FACTORY_API_INTERNAL_URL: "http://api:3001"
-      NUXT_FACTORY_API_INTERNAL: "http://api:3001"
-      NUXT_PUBLIC_API_BASE: "http://localhost:${API_PORT:-3001}"
+      NUXT_API_INTERNAL_URL: "http://durin-backend:3001"
+      NUXT_OIDC_PUBLIC_ISSUER: "http://localhost:8083/realms/durin"
+      NUXT_OIDC_INTERNAL_ISSUER: "http://keycloak:8080/realms/durin"
+      NUXT_OIDC_CLIENT_ID: "durin-backend"
+      NUXT_OIDC_CLIENT_SECRET_FILE: "/run/secrets/oidc-client-secret"
+      NUXT_OIDC_REDIRECT_URI: "http://localhost:3000/api/v1/auth/callback"
+      NUXT_OIDC_POST_LOGOUT_REDIRECT_URI: "http://localhost:3000"
+      NUXT_APP_ORIGIN: "http://localhost:3000"
     ports:
       - "127.0.0.1:3000:3000"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/tmp]
+    volumes:
+      - ui-secrets:/run/secrets:ro
+    networks: [durin-internal]
     restart: unless-stopped
+    depends_on:
+      ui-secrets-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 20s
+
+volumes:
+  ui-secrets:
+
+networks:
+  durin-internal:
+    name: durin-internal
+    external: true

@@ -18,7 +18,7 @@ ADMIN_TOKEN=$(cat "$REPO_ROOT/.secrets/vault/vault-admin-token")
 
 FEATURES=$(podman exec -e VAULT_ADDR=https://127.0.0.1:8200 \
   -e VAULT_CACERT=/vault/config/tls/ca-chain.pem \
-  -e VAULT_TOKEN="$ADMIN_TOKEN" factory-vault_1 \
+  -e VAULT_TOKEN="$ADMIN_TOKEN" durin-vault-1 \
   vault read -format=json sys/license/status 2>/dev/null |
   python3 -c "import sys,json;print('\n'.join(json.load(sys.stdin)['data']['autoloaded']['features']))")
 

@@ -1,0 +1,17 @@
+FROM docker.io/library/node:22-alpine
+
+WORKDIR /app
+
+# Install dependencies as root, then drop privileges
+COPY package.json ./
+RUN npm install --omit=dev && npm cache clean --force
+
+# Copy source
+COPY src/ ./src/
+
+# Non-root user (node uid=1000 in node:alpine)
+USER node
+
+EXPOSE 3001
+
+CMD ["node", "src/index.js"]

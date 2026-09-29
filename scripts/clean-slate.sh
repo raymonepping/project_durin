@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/clean-slate.sh
 #
-# Resets Arcanium's ACCUMULATED DEMO/BUILD-UP DATA to a clean slate, while
+# Resets Durin's ACCUMULATED DEMO/BUILD-UP DATA to a clean slate, while
 # deliberately leaving identity (LDAP + Keycloak: users, groups, realm,
 # clients, federation) and the platform's own base infrastructure
 # untouched and running:
@@ -10,9 +10,9 @@
 #     - LDAP (openldap) and Keycloak — every demo persona, group, realm,
 #       client stays exactly as it is. This script does not restart or
 #       reconfigure identity at all.
-#     - terraform/vault-platform — core policies, the arcanium/ namespace,
-#       audit device, and arcanium-api's own AppRole. Destroying this
-#       would break the running arcanium-api/arcanium-worker/vault-agent
+#     - terraform/vault-platform — core policies, the durin/ namespace,
+#       audit device, and durin-backend's own AppRole. Destroying this
+#       would break the running durin-backend/durin-worker/vault-agent
 #       immediately, not just reset demo data.
 #     - The Vault-HSM-backed "document-signing-key" Managed Key (Prompt
 #       14.1 custody) and its SoftHSM slot/token setup.
@@ -23,7 +23,7 @@
 #       vault-platform) — the transit mount every other key, including
 #       document-signing-key, actually lives on.
 #     - vault-1/2/3/vault-s/vault-hsm, postgres, softhsm, openldap,
-#       keycloak, arcanium-api/worker/ui/vault_agent containers — none of
+#       keycloak, durin-backend/worker/ui/vault_agent containers — none of
 #       these are stopped or recreated. Only the DATA inside Postgres and
 #       the DEMO artifacts inside Vault are removed.
 #
@@ -98,8 +98,8 @@ set +a
 # shellcheck source=scripts/vault-common.sh
 source "$REPO_ROOT/scripts/vault-common.sh"
 
-PGUSER="${POSTGRES_USER:-arcanium}"
-PGDB="${POSTGRES_DB:-arcanium_db}"
+PGUSER="${POSTGRES_USER:-durin}"
+PGDB="${POSTGRES_DB:-durin_db}"
 PGPASSWORD_VAL=$(grep -m1 "^POSTGRES_PASSWORD=" "$REPO_ROOT/.env" 2>/dev/null | cut -d= -f2- || true)
 
 # Vault objects deliberately kept even during the ad-hoc transit-key sweep —
@@ -108,7 +108,7 @@ PGPASSWORD_VAL=$(grep -m1 "^POSTGRES_PASSWORD=" "$REPO_ROOT/.env" 2>/dev/null | 
 # terraform/vault-transit, the same foundational-baseline tier as
 # vault-platform (it mounts the transit engine itself; every other transit
 # key, including document-signing-key, lives on that same mount).
-KEEP_TRANSIT_KEYS=(document-signing-key arcanium-webhook-signing demo-app-key workload-key)
+KEEP_TRANSIT_KEYS=(document-signing-key durin-webhook-signing demo-app-key workload-key)
 
 # Postgres tables to preserve (schema/catalogue, not accumulated data).
 KEEP_TABLES=(schema_migrations controls)
@@ -123,7 +123,7 @@ vault_root_main() {
 }
 
 echo "════════════════════════════════════════════════════════════════"
-echo " Arcanium clean-slate — reset demo/build-up data, keep identity"
+echo " Durin clean-slate — reset demo/build-up data, keep identity"
 echo "════════════════════════════════════════════════════════════════"
 echo
 
@@ -131,7 +131,7 @@ echo
 echo "▸ Discovering current state..."
 
 if ! psql_c -c "SELECT 1" >/dev/null 2>&1; then
-  echo "FATAL: cannot reach Postgres ($PGUSER@localhost:5432/$PGDB) — is arcanium-postgres running?" >&2
+  echo "FATAL: cannot reach Postgres ($PGUSER@localhost:5432/$PGDB) — is durin-postgres running?" >&2
   exit 1
 fi
 
@@ -186,7 +186,7 @@ for k in $ROOT_TRANSIT_KEYS; do
   $tf_managed || ADHOC_ROOT_KEYS_DISPLAY+=("$k")
 done
 
-WORKLOAD_CONTAINERS=(arcanium-payments-api arcanium-pki-client arcanium-kmip-client arcanium-document-signing arcanium-external-supplier)
+WORKLOAD_CONTAINERS=(durin-payments-api durin-pki-client durin-kmip-client durin-document-signing durin-external-supplier)
 RUNNING_WORKLOADS=()
 for c in "${WORKLOAD_CONTAINERS[@]}"; do
   podman inspect "$c" >/dev/null 2>&1 && RUNNING_WORKLOADS+=("$c")
@@ -197,10 +197,10 @@ echo "▸ Plan — this is exactly what will happen, nothing more:"
 echo
 echo "  KEPT (not touched at all):"
 echo "    - LDAP + Keycloak: every persona, group, realm, client"
-echo "    - terraform/vault-platform: core policies, arcanium/ namespace, arcanium-api's own AppRole"
-echo "    - document-signing-key (Managed Key, HSM custody) and arcanium-webhook-signing"
+echo "    - terraform/vault-platform: core policies, durin/ namespace, durin-backend's own AppRole"
+echo "    - document-signing-key (Managed Key, HSM custody) and durin-webhook-signing"
 echo "    - vault-1/2/3/vault-s/vault-hsm, postgres, softhsm, openldap, keycloak,"
-echo "      arcanium-api/worker/ui/vault-agent containers (kept running throughout)"
+echo "      durin-backend/worker/ui/vault-agent containers (kept running throughout)"
 echo
 echo "  Postgres — TRUNCATE (CASCADE) ${#TRUNCATE_TABLES[@]} table(s), keeping schema_migrations + controls:"
 if [ -n "$ROW_COUNTS" ]; then printf "%b" "$ROW_COUNTS"; else echo "    (all already empty)"; fi
@@ -227,15 +227,15 @@ if [ "$SKIP_CONTAINERS" = false ] && [ "${#RUNNING_WORKLOADS[@]}" -gt 0 ]; then
   echo
 fi
 if [ "$INCLUDE_STALE_LEASES" = true ]; then
-  echo "  Vault — also revoking stale database/creds/arcanium-api-role leases and dropping"
-  echo "  orphaned v-approle-arcanium-* Postgres roles (--include-stale-leases)"
+  echo "  Vault — also revoking stale database/creds/durin-backend-role leases and dropping"
+  echo "  orphaned v-approle-durin-* Postgres roles (--include-stale-leases)"
   echo
 fi
 echo "  Removed: .env.workloads (credentials for objects destroyed above)"
 echo
 
-read -r -p "Type 'arcanium' to confirm this clean-slate reset: " confirm
-[ "$confirm" = "arcanium" ] || {
+read -r -p "Type 'durin' to confirm this clean-slate reset: " confirm
+[ "$confirm" = "durin" ] || {
   echo "Aborted — nothing was changed."
   exit 1
 }
@@ -315,10 +315,10 @@ fi
 
 # ── 6. Optional — stale dynamic DB-credential lease/role cleanup ─────────
 if [ "$INCLUDE_STALE_LEASES" = true ]; then
-  echo "  revoking stale database/creds/arcanium-api-role leases..."
-  vault lease revoke -prefix "database/creds/arcanium-api-role" >/dev/null 2>&1 || true
-  active_user=$(podman exec -i arcanium-vault_agent cat /vault/secrets/db-creds.json 2>/dev/null | jq -r '.username // empty' || true)
-  mapfile -t stale_roles < <(psql_c -c "SELECT rolname FROM pg_roles WHERE rolname LIKE 'v-approle-arcanium-%'")
+  echo "  revoking stale database/creds/durin-backend-role leases..."
+  vault lease revoke -prefix "database/creds/durin-backend-role" >/dev/null 2>&1 || true
+  active_user=$(podman exec -i durin-vault_agent cat /vault/secrets/db-creds.json 2>/dev/null | jq -r '.username // empty' || true)
+  mapfile -t stale_roles < <(psql_c -c "SELECT rolname FROM pg_roles WHERE rolname LIKE 'v-approle-durin-%'")
   for r in "${stale_roles[@]:-}"; do
     [ -z "$r" ] && continue
     [ "$r" = "$active_user" ] && continue

@@ -1,7 +1,23 @@
+# compose/infra/compose.yaml — PostgreSQL for Durin
+#
+# PostgreSQL is the visible, inspectable database that stores:
+#   - customer metadata (plaintext)
+#   - protected field values (ciphertext — vault:vX:...)
+#   - document metadata (plaintext) + encrypted payloads (ciphertext)
+#   - audit events
+#   - break glass requests
+#
+# The Database Inspector in the Durin frontend reads directly from this
+# database to show the ciphertext representation alongside the application
+# representation. That visibility is intentional and central to the demo.
+#
+# Adminer provides a direct SQL view — useful for demonstrating that the
+# database holds vault:vX:... ciphertext, not plaintext sensitive values.
+
 services:
   postgres:
     image: docker.io/library/postgres:16-alpine
-    container_name: arcanium-postgres
+    container_name: durin-postgres
     hostname: postgres
     user: "70:70"
     cap_drop: [ALL]
@@ -23,9 +39,11 @@ services:
       retries: 10
       start_period: 15s
 
+  # Adminer: direct SQL access — useful for the Database Inspector demo to
+  # show ciphertext values at the raw database layer.
   adminer:
     image: docker.io/library/adminer:latest
-    container_name: arcanium-adminer
+    container_name: durin-adminer
     hostname: adminer
     restart: unless-stopped
     ports:
@@ -37,7 +55,7 @@ services:
 
 networks:
   default:
-    name: arcanium-control
+    name: durin-internal
     external: true
 
 volumes:

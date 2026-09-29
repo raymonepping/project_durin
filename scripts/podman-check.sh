@@ -40,4 +40,4 @@ else
   podman compose version
 fi
 
-echo "OK: Factory can use Podman."
+echo "OK: Durin can use Podman."

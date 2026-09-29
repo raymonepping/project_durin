@@ -67,7 +67,7 @@ fi
 if [ "$token_valid" = false ]; then
   tmp=$(mktemp "$VAULT_STATE/transit-token.pending.XXXXXX")
   vault token create -orphan -policy=autounseal -period=720h \
-    -display-name=factory-auto-unseal -field=token >"$tmp"
+    -display-name=durin-auto-unseal -field=token >"$tmp"
   test -s "$tmp"
   mv "$tmp" "$VAULT_STATE/transit-token"
 fi

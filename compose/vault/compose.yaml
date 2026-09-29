@@ -1,4 +1,18 @@
-# Adapted from vault_reference/docker-compose.yml; only the primary cluster.
+# compose/vault/compose.yaml — Durin Vault HA cluster + vault-rotator + vault-agent
+#
+# Four nodes:
+#   vault-s  — standalone, Shamir-sealed (key-shares=1), Transit backend for auto-unseal
+#   vault-1  — HA leader candidate, auto-unseals via vault-s
+#   vault-2  — HA voter, auto-unseals via vault-s
+#   vault-3  — HA voter, auto-unseals via vault-s
+#
+# vault-lb    — HAProxy, single HA client endpoint (active node only)
+# vault-rotator — proactively rotates the durin-backend AppRole secret-id
+#                 before the 90-day TTL expires; writes to vault-approle-credentials
+# durin-vault-agent — AppRole auto-auth + dynamic DB-credential rendering;
+#                     reads from vault-approle-credentials, writes token + db-creds.json
+#                     to vault-agent-secrets (consumed by the backend)
+
 x-vault: &vault
   image: docker.io/hashicorp/vault-enterprise:2.1.0-ent
   user: "100:1000"
@@ -8,12 +22,17 @@ x-vault: &vault
     VAULT_ADDR: https://127.0.0.1:8200
     VAULT_CACERT: /vault/config/tls/ca-chain.pem
     VAULT_LICENSE: "${VAULT_LICENSE}"
-  entrypoint: ["/bin/sh", "/arcanium/vault-server.sh"]
+  entrypoint: ["/bin/sh", "/durin/vault-server.sh"]
   restart: unless-stopped
   mem_limit: 2g
   networks: [default]
   healthcheck:
-    test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://127.0.0.1:8200/v1/sys/health?standbyok=true&sealedok=true&uninitok=false >/dev/null"]
+    # HTTP 200 = active, 429 = standby, 473 = perf-standby — all healthy.
+    # wget exits non-zero on any non-2xx, so capture the status line and allow
+    # any of the three healthy codes.  $$ escapes the $ from compose interpolation.
+    # On a non-2xx wget ALSO prints "wget: server returned error: HTTP/1.1 473",
+    # so match only the indented response status line and stop at the first hit.
+    test: ["CMD-SHELL", "S=$$(wget -S -qO/dev/null --no-check-certificate 'https://127.0.0.1:8200/v1/sys/health?standbyok=true&sealedok=true&uninitok=false' 2>&1 | awk '/^ *HTTP\\//{print $$2; exit}'); [ \"$$S\" = '200' ] || [ \"$$S\" = '429' ] || [ \"$$S\" = '473' ]"]
     interval: 10s
     timeout: 5s
     retries: 15
@@ -22,31 +41,27 @@ x-vault: &vault
 services:
   vault-s:
     <<: *vault
-    container_name: arcanium-vault_s
+    container_name: durin-vault_s
     hostname: vault-s
     ports: ["127.0.0.1:18190:8200"]
     volumes:
       - vault-s-data:/vault/file
       - vault-s-audit:/vault/audit
       - ../../vault-s/config-s.hcl:/vault/config/config.hcl:ro
-      - ../../vault-s/config/vault_v2.hclic:/vault/config/vault_v2.hclic:ro
       - ../../vault-tls:/vault/config/tls:ro
-      - ../../scripts/vault-server.sh:/arcanium/vault-server.sh:ro
+      - ../../scripts/vault-server.sh:/durin/vault-server.sh:ro
 
   vault-1:
     <<: *vault
-    container_name: arcanium-vault_1
+    container_name: durin-vault_1
     hostname: vault-1
-    ports:
-      - "127.0.0.1:18200:8200"
-      - "127.0.0.1:15696:5696"
+    ports: ["127.0.0.1:18200:8200"]
     volumes:
       - vault-1-data:/vault/file
       - vault-1-audit:/vault/audit
       - ../../vault-1/config.hcl:/vault/config/config.hcl:ro
-      - ../../vault-s/config/vault_v2.hclic:/vault/config/vault_v2.hclic:ro
       - ../../vault-tls:/vault/config/tls:ro
-      - ../../scripts/vault-server.sh:/arcanium/vault-server.sh:ro
+      - ../../scripts/vault-server.sh:/durin/vault-server.sh:ro
       - ../../.secrets/vault/transit-token:/run/secrets/transit-token:ro
     depends_on:
       vault-s:
@@ -54,16 +69,15 @@ services:
 
   vault-2:
     <<: *vault
-    container_name: arcanium-vault_2
+    container_name: durin-vault_2
     hostname: vault-2
     ports: ["127.0.0.1:18201:8200"]
     volumes:
       - vault-2-data:/vault/file
       - vault-2-audit:/vault/audit
       - ../../vault-2/config-2.hcl:/vault/config/config.hcl:ro
-      - ../../vault-s/config/vault_v2.hclic:/vault/config/vault_v2.hclic:ro
       - ../../vault-tls:/vault/config/tls:ro
-      - ../../scripts/vault-server.sh:/arcanium/vault-server.sh:ro
+      - ../../scripts/vault-server.sh:/durin/vault-server.sh:ro
       - ../../.secrets/vault/transit-token:/run/secrets/transit-token:ro
     depends_on:
       vault-s:
@@ -71,31 +85,76 @@ services:
 
   vault-3:
     <<: *vault
-    container_name: arcanium-vault_3
+    container_name: durin-vault_3
     hostname: vault-3
     ports: ["127.0.0.1:18202:8200"]
     volumes:
       - vault-3-data:/vault/file
       - vault-3-audit:/vault/audit
       - ../../vault-3/config-3.hcl:/vault/config/config.hcl:ro
-      - ../../vault-s/config/vault_v2.hclic:/vault/config/vault_v2.hclic:ro
       - ../../vault-tls:/vault/config/tls:ro
-      - ../../scripts/vault-server.sh:/arcanium/vault-server.sh:ro
+      - ../../scripts/vault-server.sh:/durin/vault-server.sh:ro
       - ../../.secrets/vault/transit-token:/run/secrets/transit-token:ro
     depends_on:
       vault-s:
         condition: service_healthy
 
-  # Secret-ID Rotator sidecar — proactively rotates arcanium-api's AppRole
+  # Vault load balancer — the single HA endpoint for all Vault clients
+  # (prompts/infra/30_01_vault_load_balancer.md). TCP passthrough to the
+  # active node only; see haproxy/haproxy.cfg. Host access: https://127.0.0.1:18300
+  vault-lb:
+    image: docker.io/library/haproxy:3.0.25-alpine
+    container_name: durin-vault_lb
+    hostname: vault-lb
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: [/tmp, /var/run]
+    ports:
+      - "127.0.0.1:18300:8200"   # Vault API (active node), TLS passthrough
+      - "127.0.0.1:18404:8404"   # HAProxy stats (read-only)
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ../../vault-tls:/usr/local/etc/haproxy/tls:ro
+    networks: [default]
+    restart: unless-stopped
+    depends_on:
+      vault-1: { condition: service_started }
+      vault-2: { condition: service_started }
+      vault-3: { condition: service_started }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8404/healthz >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # One-shot init container — sets UID 1000 ownership on the two shared
+  # volumes so vault-rotator (1000:1000) and durin-vault-agent (1000:1000)
+  # can write to them on first run.  Exits immediately after chown.
+  # Runs as root; no capabilities beyond what the base image provides.
+  volume-init:
+    image: docker.io/library/alpine:3.20
+    container_name: durin-vault_volume-init
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c",
+      "chown -R 1000:1000 /approle /secrets && chmod 700 /approle /secrets && echo '[volume-init] done'"]
+    volumes:
+      - vault-approle-credentials:/approle
+      - vault-agent-secrets:/secrets
+    networks: [default]
+    restart: "no"
+
+  # Secret-ID Rotator sidecar — proactively rotates durin-backend's AppRole
   # secret-id before the 90-day TTL expires, writing atomically to the shared
   # vault-approle-credentials volume. vault-agent reads from that volume,
   # so the two containers are decoupled: the agent never needs to restart
   # when a rotation happens — it picks up the new file on next re-auth.
-  # Bootstrapped once: ROTATOR_ROLE_ID/ROTATOR_SECRET_ID seeded via .env
-  # (scripts/rehydrate-stack.sh issues these after tf-platform).
+  # Bootstrapped once: ROTATOR_ROLE_ID/ROTATOR_SECRET_ID in .env after
+  # make tf-apply (see .env.example and docs/development.md).
   vault-rotator:
     image: docker.io/hashicorp/vault-enterprise:2.1.0-ent
-    container_name: arcanium-vault_rotator
+    container_name: durin-vault_rotator
     hostname: vault-rotator
     user: "1000:1000"
     cap_drop: [ALL]
@@ -104,14 +163,14 @@ services:
     tmpfs: [/tmp, /home/vault]
     entrypoint: ["/vault/rotator/rotator.sh"]
     environment:
-      VAULT_ADDR: "https://vault-1:8200"
+      VAULT_ADDR: "https://vault-lb:8200"
       VAULT_CACERT: "/vault/tls/ca-chain.pem"
       ROTATOR_ROLE_ID: "${ROTATOR_ROLE_ID}"
       ROTATOR_SECRET_ID: "${ROTATOR_SECRET_ID}"
-      TARGET_ROLE_ID: "${ARCANIUM_VAULT_ROLE_ID}"
-      TARGET_ROLE_NAME: "arcanium-api"
+      TARGET_ROLE_ID: "${DURIN_VAULT_ROLE_ID}"
+      TARGET_ROLE_NAME: "durin-backend"
       CHECK_INTERVAL_SECONDS: "43200"
-      ROTATION_THRESHOLD_SECONDS: "5184000" # 60 days
+      ROTATION_THRESHOLD_SECONDS: "5184000"
     volumes:
       - ../../vault-tls:/vault/tls:ro
       - ./vault-rotator/rotator.sh:/vault/rotator/rotator.sh:ro
@@ -119,6 +178,11 @@ services:
       - vault-approle-credentials:/run/approle
     networks: [default]
     restart: unless-stopped
+    depends_on:
+      volume-init:
+        condition: service_completed_successfully
+      vault-lb:
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "/vault/rotator/healthcheck.sh"]
       interval: 10s
@@ -127,17 +191,13 @@ services:
       retries: 5
 
   # Vault Agent — AppRole auto-auth + dynamic DB-credential rendering for
-  # arcanium-api. Reads role-id/secret-id from vault-approle-credentials
+  # durin-backend. Reads role-id/secret-id from vault-approle-credentials
   # (managed and rotated by vault-rotator above). Renders the session token
-  # and db-creds.json to vault-agent-secrets, consumed by arcanium-api/worker.
-  arcanium-vault-agent:
+  # and db-creds.json to vault-agent-secrets, consumed by durin-backend.
+  durin-vault-agent:
     image: docker.io/hashicorp/vault-enterprise:2.1.0-ent
-    container_name: arcanium-vault_agent
-    hostname: arcanium-vault-agent
-    # NOT "100:1000" (the vault-1/2/3/vault-s convention): the rendered token
-    # file must be readable cross-container by arcanium-api/worker (1000:1000).
-    # The sink's `mode` config did not reliably grant group-read — matching UID
-    # directly means the default 0600 already covers it.
+    container_name: durin-vault_agent
+    hostname: durin-vault-agent
     user: "1000:1000"
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -145,7 +205,7 @@ services:
     tmpfs: [/tmp, /home/vault]
     entrypoint: ["/vault/agent/entrypoint.sh"]
     environment:
-      VAULT_ADDR: "https://vault-1:8200"
+      VAULT_ADDR: "https://vault-lb:8200"
       VAULT_CACERT: "/vault/tls/ca-chain.pem"
     volumes:
       - ../../vault-tls:/vault/tls:ro
@@ -154,20 +214,28 @@ services:
       - vault-approle-credentials:/run/approle:ro
       - vault-agent-secrets:/vault/secrets
     networks: [default]
-    restart: unless-stopped
+    # on-failure: if vault-agent exits (e.g. cannot re-authenticate after
+    # secret-id rotation), Compose restarts it so it can pick up the fresh
+    # secret-id written by vault-rotator.  unless-stopped would also restart
+    # on deliberate stops; on-failure only triggers on abnormal exit.
+    restart: on-failure
     depends_on:
       vault-rotator:
         condition: service_healthy
     healthcheck:
+      # Verifies both the token sink and the DB-creds file are non-empty.
+      # A zero-byte token file means vault-agent has not yet authenticated
+      # or its token was revoked — the backend health endpoint distinguishes
+      # this as "token_stale" rather than a generic error.
       test: ["CMD-SHELL", "test -s /vault/secrets/token && test -s /vault/secrets/db-creds.json"]
-      interval: 15s
+      interval: 10s
       timeout: 5s
       start_period: 30s
-      retries: 3
+      retries: 6
 
 networks:
   default:
-    name: arcanium-vault-internal
+    name: durin-internal
     external: true
 
 volumes:
@@ -179,9 +247,9 @@ volumes:
   vault-2-audit: {}
   vault-3-data: {}
   vault-3-audit: {}
-  # Shared AppRole credentials volume — vault-rotator writes here (rw),
-  # arcanium-vault-agent reads here (ro). Never mounted by any other container.
+  # Shared AppRole credentials volume — vault-rotator writes (rw),
+  # durin-vault-agent reads (ro). Never mounted by any other container.
   vault-approle-credentials: {}
-  # Rendered secrets volume — arcanium-vault-agent writes token + db-creds.json
-  # here; arcanium-api/worker/api-dev reference this as external.
+  # Rendered secrets volume — durin-vault-agent writes token + db-creds.json;
+  # durin-backend references this as external.
   vault-agent-secrets: {}

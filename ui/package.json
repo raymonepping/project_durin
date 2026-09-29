@@ -1,0 +1,32 @@
+{
+  "name": "durin-ui",
+  "private": true,
+  "type": "module",
+  "description": "Durin Web Console — Nuxt 4 SPA + BFF (prompts/frontend/01_02, 01_03)",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "node .output/server/index.mjs",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@fontsource-variable/hanken-grotesk": "^5.2.5",
+    "@fontsource-variable/jetbrains-mono": "^5.2.5",
+    "lucide-vue-next": "^0.469.0",
+    "nuxt": "^4.5.2",
+    "vue": "^3.5.22",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.55.0",
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/node": "^22.20.4",
+    "tailwindcss": "^4.1.13",
+    "typescript": "~5.9",
+    "vue-tsc": "^3.3.11"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

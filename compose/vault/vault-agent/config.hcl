@@ -1,19 +1,19 @@
 # compose/vault/vault-agent/config.hcl
 #
-# Owns exactly two things for the arcanium-api identity: (1) AppRole
-# auto-auth + token renewal, and (2) rendering the dynamic
-# database/creds/arcanium-api-role credential to a file on its own schedule.
+# Owns exactly two things for the durin-backend identity:
+#   1. AppRole auto-auth + token renewal
+#   2. Rendering dynamic database/creds/durin-backend-role credentials to a file
+#
 # role-id and secret-id are read from /run/approle, the shared volume managed
 # by the vault-rotator sidecar (see compose.yaml for the depends_on wiring).
 #
-# Deliberately does NOT proxy/cache other Vault API calls (Transit, PKI,
-# Control Group) — those go straight from arcanium-api to Vault using the
-# token this file renders.
+# Does NOT proxy/cache other Vault API calls (Transit) — those go straight
+# from durin-backend to Vault using the token this agent renders.
 
 pid_file = "/tmp/pidfile"
 
 vault {
-  address = "https://vault-1:8200"
+  address = "https://vault-lb:8200"  # HAProxy → active node
   ca_cert = "/vault/tls/ca-chain.pem"
 }
 
@@ -33,22 +33,14 @@ auto_auth {
   sink "file" {
     config = {
       path = "/vault/secrets/token"
-      # The sink's `mode` config did not behave as documented (0640 silently
-      # produced 0600; quoted "0640" hard-errored). Container user: 1000:1000
-      # matches arcanium-api/worker's UID, so the default 0600 already grants
-      # read access — no mode override needed.
     }
   }
 }
 
 template {
   destination = "/vault/secrets/db-creds.json"
-  # error_on_missing_key left at its default (false is not valid here —
-  # Agent's template stanza just fails the render on a missing key, which
-  # is the correct behavior: never write a partial/malformed credentials
-  # file).
   contents = <<EOF
-{{ with secret "database/creds/arcanium-api-role" }}
+{{ with secret "database/creds/durin-backend-role" }}
 {"username":"{{ .Data.username }}","password":"{{ .Data.password }}","lease_id":"{{ .LeaseID }}","lease_duration":{{ .LeaseDuration }}}
 {{ end }}
 EOF

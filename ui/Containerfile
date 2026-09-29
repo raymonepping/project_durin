@@ -1,0 +1,16 @@
+# ui/Containerfile — Durin Web Console (Nuxt 4 SPA + Nitro BFF)
+FROM docker.io/library/node:22-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+COPY . .
+RUN npx nuxt build
+
+FROM docker.io/library/node:22-alpine
+WORKDIR /app
+ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
+COPY --from=build /app/.output ./.output
+# Non-root user (node uid=1000 in node:alpine)
+USER node
+EXPOSE 3000
+CMD ["node", ".output/server/index.mjs"]

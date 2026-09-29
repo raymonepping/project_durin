@@ -18,7 +18,7 @@ podman system df
 echo
 volume_count=$(podman volume ls --quiet | wc -l | tr -d ' ')
 echo "Named volumes: $volume_count total"
-echo "Factory volumes"
+echo "Durin volumes"
 factory_volumes=$(podman volume ls --quiet --filter name=factory)
 if [ -n "$factory_volumes" ]; then
   printf '%s\n' "$factory_volumes" | sort | sed 's/^/  /'

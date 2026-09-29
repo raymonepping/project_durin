@@ -1,11 +1,15 @@
-# Observability stack — Prompt 13
-# Independent stack. Joins arcanium-control (external) to reach Vault + the API.
-# Grafana is on host port 3010 (the Arcanium UI owns 3000).
+# compose/observability/compose.yaml — Durin observability stack
+#
+# Prometheus + Grafana + OTel Collector for Vault cluster metrics,
+# Transit operation counts, and scenario telemetry.
+#
+# Grafana is on host port 3010 (Durin frontend owns 3000).
+# Prometheus scrapes all Vault nodes and the durin-backend API.
 
 services:
   prometheus:
     image: docker.io/prom/prometheus:latest
-    container_name: arcanium-prometheus
+    container_name: durin-prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=6h
@@ -16,14 +20,12 @@ services:
       - ./prometheus/vault-token:/etc/prometheus/vault-token:ro
       - ../../vault-tls/ca-chain.pem:/etc/prometheus/vault-ca.pem:ro
       - prometheus-data:/prometheus
-    # Prometheus also joins the Vault-internal network — read-only metric scraping
-    # is a monitoring concern. Grafana/OTel stay on arcanium-control only.
-    networks: [arcanium-control, arcanium-vault-internal]
+    networks: [durin-internal]
     restart: unless-stopped
 
   grafana:
     image: docker.io/grafana/grafana:latest
-    container_name: arcanium-grafana
+    container_name: durin-grafana
     ports:
       - "127.0.0.1:3010:3000"
     environment:
@@ -36,28 +38,25 @@ services:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
-    networks: [arcanium-control]
+    networks: [durin-internal]
     depends_on: [prometheus]
     restart: unless-stopped
 
   otel-collector:
     image: docker.io/otel/opentelemetry-collector-contrib:latest
-    container_name: arcanium-otel-collector
+    container_name: durin-otel-collector
     command: ["--config=/etc/otel/config.yaml"]
     ports:
       - "127.0.0.1:4317:4317"
       - "127.0.0.1:4318:4318"
     volumes:
       - ./otel-collector-config.yaml:/etc/otel/config.yaml:ro
-    networks: [arcanium-control]
+    networks: [durin-internal]
     restart: unless-stopped
 
 networks:
-  arcanium-control:
-    name: arcanium-control
-    external: true
-  arcanium-vault-internal:
-    name: arcanium-vault-internal
+  durin-internal:
+    name: durin-internal
     external: true
 
 volumes:

@@ -1,4 +1,4 @@
-# Prometheus scrape config — Prompt 13
+# Prometheus scrape config — Durin
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
@@ -8,7 +8,7 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
-  # Vault Enterprise nodes — /v1/sys/metrics needs a token (Bearer accepted).
+  # Vault Enterprise nodes — /v1/sys/metrics requires Bearer token.
   - job_name: vault
     metrics_path: /v1/sys/metrics
     params:
@@ -28,11 +28,11 @@ scrape_configs:
       - targets: ["vault-3:8200"]
         labels: { node: vault-3 }
 
-  - job_name: arcanium-api
+  - job_name: durin-backend
     metrics_path: /metrics
     static_configs:
-      - targets: ["arcanium-api:3001"]
+      - targets: ["durin-backend:3001"]
 
   - job_name: otel-collector
     static_configs:
-      - targets: ["arcanium-otel-collector:8889"]
+      - targets: ["durin-otel-collector:8889"]

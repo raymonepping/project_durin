@@ -6,8 +6,8 @@
 # the recreate still triggers the compose dependency-cascade a future
 # regression might reintroduce (Phase 2 removed the depends_on that
 # caused this; this script stays defensive rather than assuming that
-# fix holds forever), recreate factory-api to pick up the fresh
-# token, then the agents (recreating factory-api breaks their SSE
+# fix holds forever), recreate durin-backend to pick up the fresh
+# token, then the agents (recreating durin-backend breaks their SSE
 # connections — gotcha #3). Idempotent and safe to run even when
 # nothing is actually broken: every step already tolerates being
 # re-run (compose.sh up -d, vault-unseal.sh's own already-unsealed
@@ -23,12 +23,12 @@ echo "==> Force-recreating vault-agent..."
 
 echo "==> Waiting for vault-agent's own (real) healthcheck..."
 for ((attempt = 0; attempt < 30; attempt++)); do
-  status=$(podman inspect factory-vault_agent --format '{{.State.Health.Status}}' 2>/dev/null || echo starting)
+  status=$(podman inspect durin-vault_vault-agent --format '{{.State.Health.Status}}' 2>/dev/null || echo starting)
   [ "$status" = healthy ] && break
   sleep 2
 done
 if [ "$status" != healthy ]; then
-  echo "vault-agent did not become healthy — inspect: podman logs factory-vault_agent" >&2
+  echo "vault-agent did not become healthy — inspect: podman logs durin-vault_vault-agent" >&2
   exit 1
 fi
 echo "    vault-agent healthy."
@@ -40,21 +40,21 @@ if ! ./scripts/vault-status.sh; then
   ./scripts/vault-status.sh
 fi
 
-echo "==> Recreating factory-api to pick up the fresh token..."
+echo "==> Recreating durin-backend to pick up the fresh token..."
 ./scripts/compose.sh api up -d --force-recreate
 
 for ((attempt = 0; attempt < 30; attempt++)); do
-  status=$(podman inspect factory-api --format '{{.State.Health.Status}}' 2>/dev/null || echo starting)
+  status=$(podman inspect durin-backend --format '{{.State.Health.Status}}' 2>/dev/null || echo starting)
   [ "$status" = healthy ] && break
   sleep 2
 done
 if [ "$status" != healthy ]; then
-  echo "factory-api did not become healthy — inspect: podman logs factory-api" >&2
+  echo "durin-backend did not become healthy — inspect: podman logs durin-backend" >&2
   exit 1
 fi
-echo "    factory-api healthy."
+echo "    durin-backend healthy."
 
-echo "==> Recreating agents (factory-api recreate breaks their SSE connections — gotcha #3)..."
+echo "==> Recreating agents (durin-backend recreate breaks their SSE connections — gotcha #3)..."
 ./scripts/compose.sh agents up -d --force-recreate
 
 echo

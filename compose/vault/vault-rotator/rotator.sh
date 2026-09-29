@@ -2,19 +2,19 @@
 # compose/vault/vault-rotator/rotator.sh
 #
 # Dedicated watchdog sidecar for AppRole secret-id lifecycle management.
-# Periodically inspects arcanium-api's secret-id in the shared /run/approle volume.
+# Periodically inspects durin-backend's secret-id in the shared /run/approle volume.
 # If missing, stale, or older than 60 days (66% of the 90-day secret_id_ttl),
 # it authenticates via approle-rotator and generates a fresh secret-id for
-# arcanium-api, atomically replacing the file so vault-agent can seamlessly
+# durin-backend, atomically replacing the file so vault-agent can seamlessly
 # re-authenticate.
 set -eu
 
-: "${VAULT_ADDR:=https://vault-1:8200}"
+: "${VAULT_ADDR:=https://vault-lb:8200}"
 : "${VAULT_CACERT:=/vault/tls/ca-chain.pem}"
 : "${ROTATOR_ROLE_ID:?ROTATOR_ROLE_ID is required}"
 : "${ROTATOR_SECRET_ID:?ROTATOR_SECRET_ID is required}"
 : "${TARGET_ROLE_ID:?TARGET_ROLE_ID is required}"
-: "${TARGET_ROLE_NAME:=arcanium-api}"
+: "${TARGET_ROLE_NAME:=durin-backend}"
 : "${CHECK_INTERVAL_SECONDS:=43200}"       # 12 hours
 : "${ROTATION_THRESHOLD_SECONDS:=5184000}" # 60 days (in seconds)
 
