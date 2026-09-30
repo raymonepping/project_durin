@@ -301,8 +301,22 @@ Metadata plus `encryption`; never decrypts.
 
 ### `POST /documents` (operator)
 
-Body: `{ "name", "payload" (string), "classification?" (default INTERNAL), "content_type?", "customer_id?" }`
+Body: `{ "name", "payload" (string), "classification?" (default INTERNAL), "content_type?" (default text/plain), "customer_id?" }`
 → `201` document object.
+
+Pasted text and uploaded files use the same call. `content_type` decides how
+`payload` is read:
+
+| `content_type` | `payload` | Checked |
+| --- | --- | --- |
+| `text/plain`, `text/markdown` | UTF-8 text | — |
+| `application/pdf` | base64 of the file | starts with `%PDF-` |
+| `application/vnd.openxmlformats-officedocument.wordprocessingml.document` (.docx) | base64 of the file | ZIP header |
+
+For binary types, Vault Transit encrypts the file's **bytes** (not a text
+rendering). `size_bytes` and `checksum` (SHA-256) describe those bytes. Limit:
+5 MB of file content. Errors: `415 unsupported_type`, `400 validation`
+(not base64, or content that doesn't match the type), `413 too_large`.
 
 ### `GET /documents/:id/content`
 
@@ -312,7 +326,12 @@ The normal path requires an operator. For a RESTRICTED document the response is:
 403 { "error": "vault_denied", "breakGlassRequired": true, "vault": {…}, "authority": {…}, "auditEventId": "…" }
 ```
 
-For any other document it is `200 { "data": { …document, "payload": "plaintext", "keyVersion": 5 }, "meta": { "authority": {…}, "auditEventId" } }`.
+For any other document it is `200 { "data": { …document, "payload": "…", "encoding": "utf8" | "base64", "keyVersion": 5 }, "meta": { "authority": {…}, "auditEventId" } }`.
+
+`encoding` is `utf8` for text types (`payload` is the text) and `base64` for
+uploaded binary files (`payload` is the file's bytes). The console turns base64
+into a download in the browser and checks it against `checksum`. The
+break-glass path below returns the same two fields.
 
 **Break-glass path:** the requester sends `x-break-glass-request: <request id>`
 with their own session. Vault releases the approved answer once.

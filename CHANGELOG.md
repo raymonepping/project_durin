@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Playwright journeys J0–J9 + axe accessibility (`make test-frontend`), `@narrative` timed demo run, `@failover`, `@screens`; `make ui-build|ui-rebuild|ui-dev|test-frontend-ui`.
 - Frontend quality gate and toolchain reports (`docs/frontend/`), screenshots with provenance (`docs/screenshots/`).
 - `docs/api/API_CONTRACTS.md`: Web Console BFF section.
+- Document upload: `.md`, `.pdf` and `.docx` files (≤ 5 MB) alongside pasted text. Vault encrypts the file bytes; recovery returns them for download, and the console verifies the SHA-256 against the upload. Playwright J10.
 - Documentation set per the lead prompt §29: `README.md` rewritten; new `docs/index.md`, `architecture.md` (components, request flow, trust-boundary table), `vault.md`, `scenarios.md`, `development.md` (fresh-clone bring-up), `web-console.md`; `compose/README.md` rewritten for Durin.
 
 - `GET /api/v1/vault/status` (nodes, seal type, leader, vault-lb agreement, tenant-filtered key metadata) from unauthenticated Vault endpoints — no new Vault authority (prompts/api/01_02).
@@ -35,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `make ui-rebuild` runs `scripts/ui-rebuild.sh` again (streamed-archive build, AppleDouble-safe, re-renders the OIDC secret, waits until healthy); the script was fixed to recreate `ui-secrets-init` + `durin-ui`.
+- Isolation screen: the authority tag reads "Token issued to <user> for <tenant>", so it no longer looks like it contradicts the DENIED verdict.
+
 - Stale docs corrected: `transit.md` (key operations run under the operator's Vault token, not the broker's), `operations.md` (`VAULT_ADDR` via vault-lb), `.env.example` and `compose/vault` (how the AppRole IDs are actually seeded).
 
 - `prompts/api/01_01` schema brought up to the live schema; `prompts/api/API_CONTRACTS.md` is now a generated index of all 42 endpoints.
@@ -53,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Backend-run migrations.
 
 ### Fixed
+
+- Web Console countdowns use server time (from `meta.timestamp`); a drifted container clock no longer shows a live break-glass window as expired. The duplicate "BREAK GLASS ACTIVE" line and the payload/lock-icon overlap are fixed.
 
 - Keycloak client `durin-backend` never received its Vault-sourced secret (`kcadm update clients/<id>/client-secret` only regenerates), so every Web Console sign-in failed; `setup_keycloak.sh` now sets it on the client and fails loudly.
 

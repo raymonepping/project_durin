@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Database, Eye, Siren, ShieldX, KeyRound, Ban } from 'lucide-vue-next';
+import { ArrowLeft, Database, Eye, Siren, ShieldX, KeyRound, Ban, Download, ExternalLink, ShieldCheck, TriangleAlert } from 'lucide-vue-next';
 
 const route = useRoute();
 const id = computed(() => String(route.params.id));
@@ -91,6 +91,31 @@ async function revoke() {
   await loadBreakGlass();
 }
 
+// Uploaded files come back as bytes (base64). They are turned into a file in
+// this browser tab only, never stored, and checked against the SHA-256 recorded
+// at upload, so the page proves the file came back bit-for-bit.
+const isFile = computed(() => content.value?.encoding === 'base64');
+const fileUrl = ref<string | null>(null);
+const integrity = ref<'verified' | 'mismatch' | null>(null);
+watch(content, async (c) => {
+  if (fileUrl.value) { URL.revokeObjectURL(fileUrl.value); fileUrl.value = null; }
+  integrity.value = null;
+  if (!c?.payload) return;
+  const bytes = c.encoding === 'base64'
+    ? Uint8Array.from(atob(c.payload), ch => ch.charCodeAt(0))
+    : new TextEncoder().encode(c.payload);
+  if (c.encoding === 'base64') fileUrl.value = URL.createObjectURL(new Blob([bytes], { type: doc.value?.content_type }));
+  try {
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+    const hex = Array.from(digest, b => b.toString(16).padStart(2, '0')).join('');
+    integrity.value = hex === doc.value?.checksum ? 'verified' : 'mismatch';
+  } catch { integrity.value = null; }
+});
+onBeforeUnmount(() => { if (fileUrl.value) URL.revokeObjectURL(fileUrl.value); });
+const shownPayload = computed(() => (isFile.value
+  ? `${doc.value?.name} · ${formatBytes(doc.value?.size_bytes)} · ${FILE_KIND[doc.value?.content_type] ?? doc.value?.content_type}`
+  : content.value?.payload));
+
 const frostState = computed(() => (content.value ? (cleared.value ? 'clear' : 'frosted') : contentError.value ? 'denied' : 'frosted'));
 const normalDenied = computed(() => contentError.value?.breakGlassRequired === true);
 const bgActive = computed(() => bg.value && ['pending', 'approved'].includes(bg.value.status));
@@ -112,7 +137,7 @@ const STATUS_TONE: Record<string, string> = {
     <ErrorNote v-if="error" :error="error" />
     <SkeletonRows v-else-if="loading" :rows="4" />
     <template v-else-if="doc">
-      <PageHead :title="doc.name" :lede="`${doc.classification} · ${doc.content_type} · ${doc.size_bytes ?? '—'} bytes · ${tenantName(tenant)}`">
+      <PageHead :title="doc.name" :lede="`${doc.classification} · ${FILE_KIND[doc.content_type] ?? doc.content_type} · ${formatBytes(doc.size_bytes)} · ${tenantName(tenant)}`">
         <NuxtLink :to="`/inspector?type=document&id=${doc.id}`" class="btn btn-glass"><Database class="size-4" /> Open in Database Inspector</NuxtLink>
       </PageHead>
 
@@ -130,13 +155,25 @@ const STATUS_TONE: Record<string, string> = {
             <FrostValue
               label="Document payload"
               :state="frostState"
-              :plaintext="content?.payload"
+              :plaintext="shownPayload"
               :ciphertext="shortCipher(raw?.ciphertext, 36, 8)"
               :reason="contentError && !normalDenied ? contentError.error : null"
               :key-name="doc.encryption.keyName"
               :key-version="content?.keyVersion ?? doc.encryption.keyVersion"
               data-testid="document-payload"
             />
+          </div>
+
+          <div v-if="content && (isFile || integrity)" class="mt-3 flex flex-wrap items-center gap-2" data-testid="file-actions">
+            <a v-if="isFile && fileUrl" :href="fileUrl" :download="doc.name" class="btn btn-primary" data-testid="download-file"><Download class="size-4" /> Download</a>
+            <a v-if="isFile && fileUrl && doc.content_type === 'application/pdf'" :href="fileUrl" target="_blank" rel="noopener" class="btn btn-glass"><ExternalLink class="size-4" /> Open</a>
+            <span v-if="integrity === 'verified'" class="inline-flex items-center gap-1.5 text-[0.82rem] font-semibold text-[var(--color-clear)]" data-testid="integrity">
+              <ShieldCheck class="size-4" /> SHA-256 matches the upload
+            </span>
+            <span v-else-if="integrity === 'mismatch'" class="inline-flex items-center gap-1.5 text-[0.82rem] font-semibold text-[var(--color-denied)]" data-testid="integrity">
+              <TriangleAlert class="size-4" /> SHA-256 differs from the upload
+            </span>
+            <span v-if="isFile" class="meta">Decrypted in this tab only; nothing is saved unless you download it.</span>
           </div>
 
           <div v-if="content" class="mt-4 flex flex-wrap items-center gap-3">

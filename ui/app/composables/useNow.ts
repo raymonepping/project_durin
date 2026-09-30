@@ -1,11 +1,17 @@
 // A shared 1-second clock for countdowns and TTL bars drawn to scale.
+// Expiry times come from the server (Vault, PostgreSQL), so the clock runs on
+// server time: useApi records the offset from each response's meta.timestamp.
+// A laptop whose container VM clock drifted (sleep) then still shows true TTLs.
+export const useClockOffset = () => useState<number>('clock-offset', () => 0);
+
 export function useNow() {
-  const now = useState<number>('now', () => Date.now());
+  const offset = useClockOffset();
+  const now = useState<number>('now', () => Date.now() + offset.value);
   if (import.meta.client) {
     const started = useState<boolean>('now-started', () => false);
     if (!started.value) {
       started.value = true;
-      setInterval(() => { now.value = Date.now(); }, 1000);
+      setInterval(() => { now.value = Date.now() + offset.value; }, 1000);
     }
   }
   return now;

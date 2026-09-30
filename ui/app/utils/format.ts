@@ -27,6 +27,20 @@ export function maskTail(v?: string | null) {
   return `${'•'.repeat(Math.max(4, Math.min(12, v.length - 4)))}${v.slice(-4)}`;
 }
 
+export function formatBytes(n?: number | null) {
+  if (n == null) return '—';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+/** Friendly label for a document's content type. */
+export const FILE_KIND: Record<string, string> = {
+  'text/plain': 'Text', 'text/markdown': 'Markdown', 'application/pdf': 'PDF',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word',
+};
+export const isBinaryContent = (ct?: string | null) => !!ct && !ct.startsWith('text/');
+
 export function clock(ts?: string | null) {
   if (!ts) return '—';
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -61,6 +75,8 @@ export const ERROR_SENTENCE: Record<string, string> = {
   would_strand_data: 'Stored values are below that version — rewrap first.',
   not_found: 'Not found in this tenant.',
   validation: 'The request was incomplete.',
+  unsupported_type: 'That file type is not supported. Upload .md, .pdf or .docx.',
+  too_large: 'That file is larger than the 5 MB limit.',
   network: 'The console could not reach its server.',
   backend_unavailable: 'The Durin backend is not reachable.',
 };

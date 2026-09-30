@@ -246,7 +246,7 @@ export async function vaultControlGroupStatus(token, accessor) {
 /** Release the approved, wrapped decrypt. Single use — enforced by Vault. */
 export async function vaultUnwrapDecrypt(wrapToken) {
   const data = await vaultRequest('POST', 'sys/wrapping/unwrap', { token: wrapToken, retry: false });
-  return { plaintext: Buffer.from(data.data.plaintext, 'base64').toString('utf8') };
+  return { plaintext: Buffer.from(data.data.plaintext, 'base64').toString('utf8'), plaintextBase64: data.data.plaintext };
 }
 
 // ── Transit data operations (require a scoped token) ──────────────────────────
@@ -264,6 +264,7 @@ export async function vaultDecrypt(token, keyName, ciphertext) {
   });
   return {
     plaintext: Buffer.from(data.data.plaintext, 'base64').toString('utf8'),
+    plaintextBase64: data.data.plaintext,   // raw bytes, for binary documents
     keyVersion: data.data.key_version ?? null,
   };
 }

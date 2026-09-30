@@ -13,6 +13,7 @@ import { vaultGetKeyInfo } from '../vault.js';
 import * as gateway from '../gateway/index.js';
 import { resolveTenant } from '../middleware/tenant.js';
 import { actorOf, canRecover } from '../middleware/auth.js';
+import { isBinaryType } from './documents.js';
 
 const router = Router();
 
@@ -112,9 +113,13 @@ router.get('/documents/:id', async (req, res, next) => {
       const keyType = gateway.keyTypeFromKeyName(tenant.slug, pv.key_name);
       const app = await applicationValue(req, { tenantId: tenant.id, tenantSlug: tenant.slug,
         resourceType: 'document', resourceId: req.params.id, fieldName: 'payload' }, pv.ciphertext, keyType);
-      applicationView.payload = app.value;
+      // An uploaded file is bytes, not text: report that it was recovered
+      // without pushing the whole file into the inspector view.
+      const binary = isBinaryType(rows[0].content_type);
+      applicationView.payload = binary ? null : app.value;
       fields.payload = { protected: true, keyName: pv.key_name, keyVersion: pv.key_version,
         application: { state: app.state, ...(app.reason && { reason: app.reason }) },
+        ...(binary && { binary: { contentType: rows[0].content_type, sizeBytes: rows[0].size_bytes } }),
         ...(keyType === 'restricted' && { breakGlassRequired: true }) };
       vaultState = await vaultStateFor(tenant.slug, [pv.key_name]);
     }

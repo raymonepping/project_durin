@@ -99,7 +99,7 @@ legitimate access continues.
 
 - **Console:** Isolation → authority of **ACME** asks for **Globex**'s key → **Probe**.
 - **Shows:** two facts side by side. Vault *did* issue raymon a valid ACME
-  token (the authority tag), and Vault *refused* that token on
+  token ("Token issued to raymon for ACME"), and Vault *refused* that token on
   `transit/encrypt/durin-globex-customer-data` → **403, isolation enforced by
   Vault**. The application never makes this call in normal operation; the
   probe makes it deliberately so Vault can answer.

@@ -18,7 +18,7 @@ SKIP in these suites means a claim went unverified, so treat it as a finding.
 | `make security-test` | `scripts/test-security-journeys.sh` | **yes**: rotates keys, runs Shield; ends with reset + seed | every validation journey in the lead prompt §28, end to end |
 | `make vault-failover-test` | `scripts/test-vault-failover.sh` | **disruptive**: stops the Vault leader, then restarts it | leader failover through vault-lb under load: new leader, interruption, fail closed, rejoin |
 | `make test-all` | verify, identity, authority, rbac, isolation, hardening, threat-model, security | yes | |
-| `make test-frontend` | `ui/tests/j0…j9-*.spec.ts`, `a11y.spec.ts` (Playwright) | **yes**: starts with `make reset`; runs compromise, Shield, break glass | Web Console journeys J0–J9 (prompts/frontend/02_01) with real Keycloak users signed in through the BFF; axe WCAG 2.1 A/AA on every screen |
+| `make test-frontend` | `ui/tests/j0…j10-*.spec.ts`, `a11y.spec.ts` (Playwright) | **yes**: starts with `make reset`; runs compromise, Shield, break glass | Web Console journeys J0–J10 (J10: document upload, .md/.pdf bytes round-trip, API refusals) with real Keycloak users signed in through the BFF; axe WCAG 2.1 A/AA on every screen |
 | `cd ui && npx playwright test narrative --grep @narrative` | `ui/tests/narrative.spec.ts` | yes (run after `make reset`) | the 01_05 demo story, timed, with zero browser console errors |
 | `cd ui && npx playwright test j9 --grep @failover` | `ui/tests/j9-vault.spec.ts` | no (run while `make vault-failover-test` runs) | the Vault page follows a leader change |
 | `cd ui && npx playwright test screens --grep @screens` | `ui/tests/screens.spec.ts` | no | regenerates `docs/screenshots/` |
@@ -53,7 +53,7 @@ through unchanged.
 | threat-model | 27 pass, 2 skip (T7 failure path; run separately: 3 / 3) |
 | security journeys | 74 / 74 |
 | vault failover | 6 / 6, 0 of 96 requests failed, slowest 6.9 s |
-| test-frontend | 30 / 30 (J0–J9 = 27, a11y = 3) |
+| test-frontend | 34 / 34 (J0–J10 = 31, a11y = 3) |
 | @narrative | 1 / 1: Inspector 858 ms, Shield 286 ms, break glass 3.6 s, 0 console errors |
 | @failover (with vault-failover-test) | 1 / 1, leader card moved in ~17 s |
 

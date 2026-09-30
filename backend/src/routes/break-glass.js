@@ -384,7 +384,7 @@ export async function redeemBreakGlass({ requestId, tenant, resourceId, actor })
       vault_release: 'sys/wrapping/unwrap (single use)', normal_access_restored: true,
     },
   });
-  return { request: row, plaintext: released.plaintext, auditEventId };
+  return { request: row, plaintext: released.plaintext, plaintextBase64: released.plaintextBase64, auditEventId };
 }
 
 export default router;

@@ -41,10 +41,10 @@ const caption = computed(() => {
       :style="{ boxShadow: `inset 0 0 0 1px rgb(15 26 42 / 0.1), inset 0 1px 0 #fff` }"
     >
       <!-- what sits behind the glass -->
-      <div class="relative z-[1] flex min-h-[2.75rem] items-center px-3.5" :class="compact ? 'py-2' : 'py-2.5'">
+      <div class="relative z-[1] flex min-h-[2.75rem] items-center pl-3.5" :class="[compact ? 'py-2' : 'py-2.5', state === 'clear' ? 'pr-12' : 'pr-28']">
         <span
           v-if="state === 'clear' && plaintext"
-          class="text-[0.98rem] font-semibold tracking-[-0.005em] text-[var(--color-ink)] break-all"
+          class="whitespace-pre-line break-words text-[0.98rem] font-semibold tracking-[-0.005em] text-[var(--color-ink)]"
         >{{ plaintext }}</span>
         <span v-else class="cipher">{{ ciphertext || 'vault:v?:…' }}</span>
       </div>

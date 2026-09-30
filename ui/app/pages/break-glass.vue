@@ -127,7 +127,7 @@ const mine = (r: any) => r.requested_by === me.value?.name;
             <span v-if="!can('approve') && r.status === 'pending'" class="meta">{{ reason('approve') }}</span>
           </div>
 
-          <p v-if="flash[r.id]?.ok" class="mt-3 text-[0.86rem] font-semibold" :class="r.status === 'approved' ? 'text-[var(--color-glass)]' : 'text-[var(--color-ink-2)]'">{{ flash[r.id]!.text }}</p>
+          <p v-if="flash[r.id]?.ok && r.status !== 'approved'" class="mt-3 text-[0.86rem] font-semibold" :class="r.status === 'approved' ? 'text-[var(--color-glass)]' : 'text-[var(--color-ink-2)]'">{{ flash[r.id]!.text }}</p>
           <ErrorNote v-if="flash[r.id]?.error" :error="flash[r.id]!.error" class="mt-3" />
         </div>
       </article>

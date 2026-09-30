@@ -35,6 +35,7 @@ export function useTenant() {
 
 export function useApi() {
   const { tenant } = useTenant();
+  const clockOffset = useClockOffset();
 
   async function call<T = any>(path: string, opts: {
     method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -55,6 +56,10 @@ export function useApi() {
         ignoreResponseError: true,
       });
       const json = res._data ?? {};
+      if (typeof json.meta?.timestamp === 'string') {
+        const server = Date.parse(json.meta.timestamp);
+        if (!Number.isNaN(server)) clockOffset.value = server - Date.now();
+      }
       if (res.status === 401) {
         const route = useRoute();
         if (route.path !== '/login') await navigateTo(`/login?returnTo=${encodeURIComponent(route.fullPath)}`);

@@ -610,7 +610,9 @@ check_secret_hygiene() {
   # Check git-tracked files for raw Vault tokens
   if command -v git >/dev/null 2>&1 && [ -d "$PROJECT_ROOT/.git" ]; then
     local token_in_git
-    token_in_git=$(cd "$PROJECT_ROOT" && git grep -l 'hvs\.\|s\.[A-Za-z0-9]\{24\}' 2>/dev/null \
+    # A token starts a word (hvs.… or legacy s.<24>); requiring a boundary
+    # avoids false hits inside identifiers such as attackerHas.plaintext….
+    token_in_git=$(cd "$PROJECT_ROOT" && git grep -lE '(^|[^A-Za-z0-9_.])(hvs\.[A-Za-z0-9_-]{20,}|s\.[A-Za-z0-9]{24}([^A-Za-z0-9]|$))' 2>/dev/null \
       | grep -v '\.gitignore\|CHANGELOG\|test-hardening' || echo "")
     if [ -z "$token_in_git" ]; then
       pass "No raw Vault tokens found in git-tracked files"

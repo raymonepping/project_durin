@@ -143,7 +143,7 @@ const cell = (v: unknown) => {
                 v-else
                 :label="FIELD_LABEL[name] ?? name"
                 :state="f.application.state === 'recovered' ? (cleared ? 'clear' : 'frosted') : 'denied'"
-                :plaintext="view.applicationView[name]"
+                :plaintext="f.binary ? `${FILE_KIND[f.binary.contentType] ?? f.binary.contentType} file · ${formatBytes(f.binary.sizeBytes)}, recovered (download it on the document page)` : view.applicationView[name]"
                 :ciphertext="shortCipher(view.databaseView[name])"
                 :reason="f.application.reason ?? null"
                 :data-testid="`app-${name}`"

@@ -212,8 +212,8 @@ export async function redeemBreakGlassFromVault(requestId) {
   const entry = pendingBreakGlass.get(requestId);
   if (!entry) return null;
   pendingBreakGlass.delete(requestId);
-  const { plaintext } = await vaultUnwrapDecrypt(entry.wrapToken);
-  return { plaintext, accessor: entry.accessor };
+  const { plaintext, plaintextBase64 } = await vaultUnwrapDecrypt(entry.wrapToken);
+  return { plaintext, plaintextBase64, accessor: entry.accessor };
 }
 
 export function holdsBreakGlass(requestId) {

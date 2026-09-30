@@ -22,6 +22,19 @@ const router = Router();
 
 export const CLASSIFICATIONS = ['PUBLIC', 'INTERNAL', 'CONFIDENTIAL', 'RESTRICTED'];
 
+// Pasted text and uploaded files. Text types travel as UTF-8 strings; binary
+// types travel as base64 of the file's bytes, and Vault encrypts those bytes
+// as-is (never a text rendering of them).
+export const CONTENT_TYPES = {
+  'text/plain': { binary: false },
+  'text/markdown': { binary: false },
+  'application/pdf': { binary: true, magic: Buffer.from('%PDF-') },
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': { binary: true, magic: Buffer.from([0x50, 0x4b, 0x03, 0x04]) },
+};
+export const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
+export const isBinaryType = (contentType) => CONTENT_TYPES[contentType]?.binary === true;
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
 async function loadDocument(tenant, id) {
   const { rows } = await query(
     `SELECT d.*, c.name AS customer_name,
@@ -45,6 +58,13 @@ function encryptionState(doc) {
     protectedAt: doc.protected_at ?? null,
     recoveryRequires: doc.classification === 'RESTRICTED' ? 'break-glass' : 'operator',
   };
+}
+
+/** Text documents return UTF-8; uploaded binary files return their bytes as base64. */
+function payloadOf(doc, plaintext, plaintextBase64) {
+  return isBinaryType(doc.content_type)
+    ? { payload: plaintextBase64, encoding: 'base64' }
+    : { payload: plaintext, encoding: 'utf8' };
 }
 
 function presentDocument(doc) {
@@ -88,7 +108,8 @@ router.get('/', async (req, res, next) => {
 router.post('/', async (req, res, next) => {
   try {
     const tenant = await resolveTenant(req);
-    const { name, content_type, payload, customer_id } = req.body ?? {};
+    const { name, payload, customer_id } = req.body ?? {};
+    const content_type = String(req.body?.content_type ?? 'text/plain');
     const classification = String(req.body?.classification ?? 'INTERNAL').toUpperCase();
     if (!name)    return res.status(400).json({ error: 'validation', message: 'name is required' });
     if (typeof payload !== 'string' || !payload) {
@@ -96,6 +117,26 @@ router.post('/', async (req, res, next) => {
     }
     if (!CLASSIFICATIONS.includes(classification)) {
       return res.status(400).json({ error: 'validation', message: `classification must be one of ${CLASSIFICATIONS.join(', ')}` });
+    }
+    const type = CONTENT_TYPES[content_type];
+    if (!type) {
+      return res.status(415).json({ error: 'unsupported_type', message: `content_type must be one of ${Object.keys(CONTENT_TYPES).join(', ')}` });
+    }
+    // The bytes the document really consists of: UTF-8 text, or the decoded file.
+    let bytes;
+    if (type.binary) {
+      if (!BASE64.test(payload) || payload.length % 4 !== 0) {
+        return res.status(400).json({ error: 'validation', message: 'payload must be base64 for binary content types' });
+      }
+      bytes = Buffer.from(payload, 'base64');
+      if (type.magic && !bytes.subarray(0, type.magic.length).equals(type.magic)) {
+        return res.status(400).json({ error: 'validation', message: `file content does not match ${content_type}` });
+      }
+    } else {
+      bytes = Buffer.from(payload, 'utf8');
+    }
+    if (bytes.length > MAX_DOCUMENT_BYTES) {
+      return res.status(413).json({ error: 'too_large', message: `documents are limited to ${MAX_DOCUMENT_BYTES / 1024 / 1024} MB` });
     }
     if (customer_id) {
       const { rowCount } = await query('SELECT 1 FROM customers WHERE id=$1 AND tenant_id=$2', [customer_id, tenant.id]);
@@ -110,16 +151,16 @@ router.post('/', async (req, res, next) => {
     const { ciphertext, keyName, keyVersion } = await gateway.protect({
       tenantId: tenant.id, tenantSlug: tenant.slug, keyType,
       resourceType: 'document', resourceId: docId, fieldName: 'payload', actor,
-    }, payload);
+    }, payload, { encoding: type.binary ? 'base64' : 'utf8' });
 
-    // Checksum of the plaintext lets an authorised reader verify integrity;
-    // it is a one-way digest and reveals nothing recoverable.
-    const checksum = createHash('sha256').update(payload).digest('hex');
+    // Checksum of the plaintext bytes lets an authorised reader verify
+    // integrity; it is a one-way digest and reveals nothing recoverable.
+    const checksum = createHash('sha256').update(bytes).digest('hex');
     await query(
       `INSERT INTO documents (id, tenant_id, customer_id, name, content_type, classification, size_bytes, checksum, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [docId, tenant.id, customer_id || null, name, content_type ?? 'text/plain', classification,
-       Buffer.byteLength(payload), checksum, actor],
+      [docId, tenant.id, customer_id || null, name, content_type, classification,
+       bytes.length, checksum, actor],
     );
     await query(
       `INSERT INTO protected_values (tenant_id, resource_type, resource_id, field_name, ciphertext, key_name, key_version)
@@ -162,11 +203,12 @@ router.get('/:id/content', async (req, res, next) => {
     const breakGlassRequest = req.headers['x-break-glass-request'];
 
     if (breakGlassRequest) {
-      const { request, plaintext, auditEventId } = await redeemBreakGlass({
+      const { request, plaintext, plaintextBase64, auditEventId } = await redeemBreakGlass({
         requestId: String(breakGlassRequest), tenant, resourceId: doc.id, actor: actorOf(req),
       });
       return res.json({
-        data: { ...presentDocument(doc), payload: plaintext, keyVersion: gateway.ciphertextVersion(pv.ciphertext) },
+        data: { ...presentDocument(doc), ...payloadOf(doc, plaintext, plaintextBase64),
+          keyVersion: gateway.ciphertextVersion(pv.ciphertext) },
         meta: {
           tenant: tenant.slug,
           breakGlass: {
@@ -188,11 +230,11 @@ router.get('/:id/content', async (req, res, next) => {
     }
 
     try {
-      const { plaintext, keyVersion, auditEventId, authority } = await gateway.recover(
+      const { plaintext, plaintextBase64, keyVersion, auditEventId, authority } = await gateway.recover(
         { ...ctxBase, actor: actorOf(req) }, pv.ciphertext,
       );
       res.json({
-        data: { ...presentDocument(doc), payload: plaintext, keyVersion },
+        data: { ...presentDocument(doc), ...payloadOf(doc, plaintext, plaintextBase64), keyVersion },
         meta: { tenant: tenant.slug, authority, auditEventId },
       });
     } catch (err) {

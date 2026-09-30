@@ -127,10 +127,8 @@ ui-build: ## Build the durin-ui container image (Nuxt SPA + BFF)
 	@xattr -rc ui 2>/dev/null || true
 	@COPYFILE_DISABLE=1 podman build -t durin-ui:local -f ui/Containerfile ui/
 
-ui-rebuild: ui-build ## Rebuild durin-ui and recreate it (re-renders the OIDC secret from Vault)
-	@./scripts/identity-secrets.sh >/dev/null
-	@./scripts/compose.sh ui up -d --force-recreate
-	@echo "Web Console: http://localhost:3000"
+ui-rebuild: ## Rebuild durin-ui from a streamed archive, re-render the OIDC secret from Vault, wait until healthy
+	@./scripts/ui-rebuild.sh
 
 ui-dev: ## Run the console with hot reload on the host (needs backend + identity; secret from Vault)
 	@cd ui && NUXT_API_INTERNAL_URL=http://127.0.0.1:3001 \

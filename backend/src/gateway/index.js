@@ -173,9 +173,13 @@ function base64(plaintext) {
  * context: { tenantId, tenantSlug, keyType, resourceType, resourceId, fieldName, actor }
  * Returns: { ciphertext, keyName, keyVersion, auditEventId, authority }
  */
-export async function protect(context, plaintext) {
+export async function protect(context, plaintext, options = {}) {
   const { tenantId, tenantSlug, keyType = 'customer-data',
     resourceType, resourceId, fieldName, actor = 'system' } = context;
+  // options.encoding === 'base64': `plaintext` is already the base64 of raw
+  // bytes (an uploaded file) and goes to Transit as-is, so Vault encrypts the
+  // file itself, not a text rendering of it.
+  const toVault = options.encoding === 'base64' ? p => p : base64;
   if (typeof plaintext !== 'string' || plaintext.length === 0) {
     throw new GatewayError('plaintext must be a non-empty string', 'validation');
   }
@@ -183,7 +187,7 @@ export async function protect(context, plaintext) {
   const auditBase = { operation: 'PROTECT', tenantId, resourceType, resourceId, fieldName, actor, keyName };
 
   try {
-    const { result, auth } = await withTenantAuthority(tenantSlug, t => vaultEncrypt(t, keyName, base64(plaintext)));
+    const { result, auth } = await withTenantAuthority(tenantSlug, t => vaultEncrypt(t, keyName, toVault(plaintext)));
     const authority = describe(auth);
     const auditEventId = await emitAudit({ ...auditBase, keyVersion: result.keyVersion,
       result: 'ALLOWED', source: 'vault', metadata: { authority } });
@@ -211,7 +215,7 @@ export async function recover(context, ciphertext, options = {}) {
     const authority = describe(r.auth);
     const auditEventId = await emitAudit({ ...auditBase, result: 'ALLOWED', source: 'vault',
       metadata: { authority, ...(options.auditMetadata ?? {}) } });
-    return { plaintext: r.result.plaintext, keyName, keyVersion, auditEventId, authority };
+    return { plaintext: r.result.plaintext, plaintextBase64: r.result.plaintextBase64, keyName, keyVersion, auditEventId, authority };
   } catch (err) {
     const auditEventId = await emitAudit({ ...auditBase, result: 'DENIED',
       source: err.vault ? 'vault' : 'application',

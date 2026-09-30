@@ -34,7 +34,7 @@ into plaintext?**
 | Compromise / Shield | `/compromise`, `/shield` | a stolen copy is ciphertext; after Shield it is worthless to everyone |
 | Isolation | `/isolation` | one tenant's Vault token is refused on another tenant's key |
 | Break Glass | `/break-glass`, `/documents/:id` | request → approval in Vault → released once |
-| Customers, Documents, Tenants | `/customers`, `/documents`, `/tenants` | the data, with protected fields frosted by default |
+| Customers, Documents, Tenants | `/customers`, `/documents`, `/tenants` | the data, with protected fields frosted by default; documents are uploaded (.md, .pdf, .docx) or pasted, and uploaded files come back as a verified download |
 | Database Inspector | `/inspector` | the same record as application, database and Vault state; raw rows |
 | Vault | `/vault` | leader, standbys, load balancer, backend's metadata-only authority, keys |
 | Audit | `/audit` | every event, who acted, and whether Vault or the application decided |

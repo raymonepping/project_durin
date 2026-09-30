@@ -13,5 +13,7 @@ test('J8 ACME authority on a Globex key → Vault 403, isolation enforced', asyn
   await expect(v).toContainText('Isolation enforced by Vault');
   await expect(v).toContainText('vault 403');
   await expect(page.locator('main')).toContainText('tenant-acme');
+  await expect(page.locator('main')).toContainText('Token issued to raymon');
+  await expect(page.locator('main')).not.toContainText('Vault authorised raymon');
   await context.close();
 });

@@ -398,3 +398,26 @@ that volume read-only and never holds a Vault token.
 | `503 oidc_client_secret_missing` | `ui-secrets-init` did not run or failed | `podman logs durin-ui-secrets-init`; `make ui-rebuild` (re-issues `ui-secret-id`) |
 | Everyone signed out after a rebuild | Sessions are in the container's memory | expected; sign in again |
 | Page renders but data calls return 401 | Backend rejected the token (expired refresh, realm reset) | sign out/in; the BFF drops the session on a backend 401 |
+
+## 12. Clock drift after the laptop sleeps
+
+The Podman VM's clock can stall while the Mac sleeps (seen: 9 h 41 min
+behind). Vault, PostgreSQL and Keycloak share that clock, so security
+decisions stay consistent, and the console keeps server time for its
+countdowns. Dates and timestamps are wrong, though, and fixing the clock
+expires every live lease at once.
+
+```bash
+echo "host $(date -u +%T)  vm $(podman machine ssh date -u +%T)"   # compare
+podman machine ssh "sudo date -u -s @$(date +%s)"                  # set the VM clock
+podman restart durin-vault_agent      # the old DB lease expired: render fresh credentials
+podman restart durin-backend          # reconnect with them
+make verify
+```
+
+Symptom if Vault Agent is not restarted: the backend crash-loops with
+`password authentication failed for user "v-approle-durin-ba-…"`.
+
+After a full `make down`, `vault-s` starts sealed and its healthcheck blocks
+the cluster, so `make up` fails once. Run `./scripts/vault-unseal.sh`, then
+`make up` again.

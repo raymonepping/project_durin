@@ -62,7 +62,7 @@ async function probe() {
             <ArrowRight class="size-4 text-[var(--color-mullion-dark)]" />
             <span class="mono rounded bg-white/70 px-2 py-0.5 text-[0.82rem]">transit/{{ result.operation }}/{{ result.targetKey }}</span>
           </div>
-          <AuthorityTag :authority="result.authority" />
+          <AuthorityTag :authority="result.authority" issued />
           <VaultVerdict
             :result="result.result"
             :title="result.isolationEnforced ? 'Isolation enforced by Vault' : 'Isolation NOT enforced'"
