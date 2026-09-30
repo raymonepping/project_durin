@@ -177,6 +177,17 @@ resource "vault_policy" "durin_rotator" {
     path "auth/approle/role/durin-backend/role-id" {
       capabilities = ["read"]
     }
+
+    # 2026-09-30: the rotator decides on Vault's own answer — it looks the
+    # current secret-id up (expiry, accessor) instead of trusting a local
+    # schedule, and destroys the secret-id it replaced.
+    path "auth/approle/role/durin-backend/secret-id/lookup" {
+      capabilities = ["update"]
+    }
+
+    path "auth/approle/role/durin-backend/secret-id-accessor/destroy" {
+      capabilities = ["update"]
+    }
   EOT
 }
 

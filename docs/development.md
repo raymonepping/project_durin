@@ -48,8 +48,10 @@ make seed                       # demo tenants, customers, documents
 make verify                     # smoke test the whole stack
 ```
 
-After the first bring-up, `make up` starts vault, infra and backend in
-order, then run `make identity-bootstrap` (idempotent) and `make ui-rebuild`.
+After the first bring-up, `make up` starts the whole stack in order: vault
+(unsealing `vault-s` first), infra, migrations, backend, identity and the Web
+Console (it builds the console image only if it is missing; `make ui-rebuild`
+rebuilds it after code changes).
 `make down` stops everything; named volumes keep state.
 
 Secrets never go into `.env` or compose files. Tokens, secret-ids, the root

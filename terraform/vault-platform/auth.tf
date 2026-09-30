@@ -3,6 +3,19 @@
 resource "vault_auth_backend" "approle" {
   type = "approle"
   path = "approle"
+
+  # AppRole caps every secret-id (and token) at the mount's effective
+  # max_lease_ttl. Untuned, that is the server-wide max_lease_ttl in
+  # vault-*/config*.hcl — 168h — so `secret_id_ttl = 7776000` (90 days) on
+  # durin-backend/durin-agent silently became 7 days, and vault-rotator's
+  # 60-day schedule could never catch it (found 2026-09-30: live secret-id
+  # due to expire 2026-10-06 while the rotator reported "58 days" left; the
+  # same bug broke Editors Factory the same day). Raising the ceiling on
+  # this mount only keeps every other mount's 7-day maximum.
+  tune {
+    default_lease_ttl = "1h"
+    max_lease_ttl     = "2160h" # 90 days = the secret_id_ttl the roles declare
+  }
 }
 
 # Role used by the Durin backend service (via Vault Agent) to authenticate.
@@ -15,7 +28,7 @@ resource "vault_approle_auth_backend_role" "durin_backend" {
   token_policies = [vault_policy.durin_backend.name, vault_policy.durin_database.name]
   token_ttl      = 3600    # 1 hour — matches DB dynamic cred TTL
   token_max_ttl  = 14400   # 4 hours
-  secret_id_ttl  = 7776000 # 90 days — vault-rotator renews at 60 days
+  secret_id_ttl  = 7776000 # 90 days — vault-rotator renews below 1/3 of the real remaining life
 }
 
 # Legacy role — not used by the running stack (Vault Agent logs in as

@@ -58,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `make up` brings up the whole stack (it stopped after the backend; identity and the Web Console needed separate commands), and `make vault-up` unseals `vault-s` before starting the cluster, which used to block every cold start. The Makefile no longer warns about overridden `vault-up`/`vault-down`/`ui-up` targets.
+- AppRole secret-ids lived 7 days, not 90: the mount inherited the server-wide `max_lease_ttl = "168h"`. The mount is tuned to 90 days (`auth.tf`); `durin-backend`'s secret-id re-issued (expires 2026-12-29) and three orphaned valid secret-ids destroyed.
+- `vault-rotator` rotates on Vault's real expiry (below 1/3 of the lifetime), issues one secret-id per rotation (it issued two, leaving orphans), destroys the replaced one, and warns on a shortened life. Policy gained `secret-id/lookup` and `secret-id-accessor/destroy`.
+- Vault Agent heals a silently dead token: an entrypoint watchdog restarts it after three rejections by Vault, and its healthcheck now does a real `token lookup` (it only checked that the files existed).
 - Web Console countdowns use server time (from `meta.timestamp`); a drifted container clock no longer shows a live break-glass window as expired. The duplicate "BREAK GLASS ACTIVE" line and the payload/lock-icon overlap are fixed.
 
 - Keycloak client `durin-backend` never received its Vault-sourced secret (`kcadm update clients/<id>/client-secret` only regenerates), so every Web Console sign-in failed; `setup_keycloak.sh` now sets it on the client and fails loudly.

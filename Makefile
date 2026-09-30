@@ -69,7 +69,20 @@ $(1)-logs: ## Follow $(1) logs
 	@./scripts/compose.sh "$(1)" logs -f
 endef
 
-$(foreach stack,$(STACKS),$(eval $(call STACK_TARGETS,$(stack))))
+define STACK_LOGS
+$(1)-logs: ## Follow $(1) logs
+	@./scripts/compose.sh "$(1)" logs -f
+endef
+
+# vault has its own vault-up/vault-down (unseal order) and ui its own ui-up
+# (build-if-missing, secret-id); generating them here too made make warn
+# "overriding commands for target …".
+$(foreach stack,$(filter-out vault ui,$(STACKS)),$(eval $(call STACK_TARGETS,$(stack))))
+$(eval $(call STACK_LOGS,vault))
+$(eval $(call STACK_LOGS,ui))
+
+ui-down: ## Stop the ui stack
+	@./scripts/compose.sh ui down
 
 # ── Vault ─────────────────────────────────────────────────────────────────────
 
@@ -220,20 +233,33 @@ vault-down: ## Stop Vault nodes (for failure behavior testing)
 	 ./scripts/compose.sh vault stop 2>/dev/null || true
 	@echo "Vault nodes stopped — backend should now return 503 for protected operations"
 
-vault-up: ## Start Vault nodes and unseal (after vault-down)
+vault-up: ## Start Vault: vault-s first, unseal it, then the cluster, vault-lb, rotator and agent
+	@# vault-s uses a Shamir seal and comes up sealed; the cluster nodes wait on
+	@# its health, so starting everything at once blocked `compose up` behind a
+	@# sealed vault-s on every cold start. Unseal it first.
+	@./scripts/compose.sh vault up -d vault-s
+	@n=0; until curl -sk -o /dev/null https://127.0.0.1:18190/v1/sys/seal-status; do \
+		n=$$((n+1)); [ $$n -ge 60 ] && { echo "vault-s did not answer within 60s" >&2; exit 1; }; sleep 1; done
+	@./scripts/vault-unseal.sh
 	@./scripts/compose.sh vault up -d
-	@sleep 3
-	@./scripts/vault-unseal.sh || true
 	@echo "Vault nodes started — run 'make verify' to confirm recovery"
 
 # ── Convenience: bring up the full stack in order ────────────────────────────
 
-up: ## Bring up vault + infra + backend (in dependency order; then make identity-bootstrap and make ui-rebuild)
+up: ## Bring up the whole stack in order: vault, infra, migrations, backend, identity, Web Console
 	@$(MAKE) --no-print-directory network
 	@$(MAKE) --no-print-directory vault-up
 	@$(MAKE) --no-print-directory infra-up
 	@$(MAKE) --no-print-directory db-migrate
 	@$(MAKE) --no-print-directory backend-up
+	@$(MAKE) --no-print-directory identity-bootstrap
+	@$(MAKE) --no-print-directory ui-up
+
+ui-up: ## Start the Web Console (builds the image first only if it does not exist yet)
+	@podman image exists durin-ui:local || $(MAKE) --no-print-directory ui-build
+	@./scripts/identity-secrets.sh >/dev/null   # (re)issue ui-secret-id so ui-secrets-init can render the OIDC secret
+	@./scripts/compose.sh ui up -d
+	@echo "Web Console: http://localhost:3000"
 
 down: ## Bring down all Durin stacks
 	@for stack in ui backend observability identity infra vault; do \

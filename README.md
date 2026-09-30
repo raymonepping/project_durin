@@ -61,9 +61,8 @@ and a Vault Enterprise licence. The full first bring-up from a fresh clone is
 in [docs/development.md](docs/development.md). Once bootstrapped:
 
 ```bash
-make up                  # Vault (+ vault-lb), PostgreSQL, migrations, API
-make identity-bootstrap  # Keycloak + LDAP users, secrets from Vault
-make ui-rebuild          # Web Console → http://localhost:3000
+make up                  # everything: Vault (+ vault-lb), PostgreSQL, migrations, API,
+                         # identity (Keycloak + LDAP), Web Console → http://localhost:3000
 make seed                # demo tenants, customers, documents
 
 ./scripts/identity-secrets.sh --show-user raymon   # a lab password

@@ -16,8 +16,25 @@ requires two credentials:
 - `secret_id` — rotatable, 90-day TTL by default
 
 **The `vault-rotator` sidecar handles rotation automatically.** It runs in
-`compose/vault/compose.yaml` alongside `durin-vault-agent`, checks the
-secret-id age every 12 hours, and rotates at 60 days (66% of 90-day TTL).
+`compose/vault/compose.yaml` alongside `durin-vault-agent` and, every 12
+hours, asks Vault about the secret-id on disk: it rotates when Vault says it
+is invalid or has less than a third of its real lifetime left, issues exactly
+one new secret-id, destroys the one it replaced, and logs a warning if Vault
+issues a shorter life than the role's 90 days.
+
+Why it reads Vault instead of counting days (2026-09-30): the AppRole mount
+inherited the server-wide `max_lease_ttl = "168h"`, so every "90-day"
+secret-id silently lived 7 days, and the old 60-day schedule could never
+catch that (the live one was due to expire 2026-10-06 while the rotator
+reported 58 days left). The mount is now tuned to 90 days in
+`terraform/vault-platform/auth.tf`. The old rotator also issued two
+secret-ids per rotation; three valid orphans were found and destroyed.
+
+**Vault Agent heals a dead token on its own.** Its entrypoint runs a watchdog
+that restarts the agent after three consecutive rejections of its token by
+Vault (an unreachable Vault is not counted); the fresh agent logs in again and
+renders new `db-creds.json`, which the backend picks up. Proven: 111 s from a
+revoked token to a healthy backend, with no manual step.
 
 The information below covers:
 - How to verify the rotator is working
@@ -119,7 +136,7 @@ curl -sf http://localhost:3001/api/v1/health | python3 -m json.tool
 
 ### Shortening TTL for testing
 
-To test rotation without waiting 60 days, reduce `secret_id_ttl` in Terraform:
+To test rotation quickly, reduce `secret_id_ttl` in Terraform (the rotator rotates below 1/3 of the remaining life), or delete `/run/approle/metadata.json` in the rotator container and restart it to force one:
 
 ```hcl
 # terraform/vault-platform/auth.tf
@@ -401,6 +418,13 @@ that volume read-only and never holds a Vault token.
 
 ## 12. Clock drift after the laptop sleeps
 
+> **Fixed at the root (2026-09-30):** the Podman VM's chrony now uses
+> `makestep 1.0 -1` (was `1.0 3`, which forbade stepping after boot, so a
+> paused VM never caught up). The VM corrects itself after sleep. The steps
+> below remain for a re-initialised Podman machine, until the setting is
+> re-applied there (`podman machine ssh`, edit `/etc/chrony.conf`,
+> `sudo systemctl restart chronyd`).
+
 The Podman VM's clock can stall while the Mac sleeps (seen: 9 h 41 min
 behind). Vault, PostgreSQL and Keycloak share that clock, so security
 decisions stay consistent, and the console keeps server time for its
@@ -419,5 +443,5 @@ Symptom if Vault Agent is not restarted: the backend crash-loops with
 `password authentication failed for user "v-approle-durin-ba-…"`.
 
 After a full `make down`, `vault-s` starts sealed and its healthcheck blocks
-the cluster, so `make up` fails once. Run `./scripts/vault-unseal.sh`, then
-`make up` again.
+the cluster. Fixed: `make vault-up` (and so `make up`) now starts `vault-s`
+alone, unseals it, then starts the rest.
